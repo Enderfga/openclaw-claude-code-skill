@@ -1,0 +1,35 @@
+{
+  "name": "openclaw-claude-code-skill",
+  "version": "1.0.0",
+  "description": "A skill package for OpenClaw/Claude Code that enables MCP integration, sub-agent orchestration, and context recovery",
+  "main": "src/index.ts",
+  "keywords": [
+    "claude-code",
+    "openclaw",
+    "mcp",
+    "model-context-protocol",
+    "ai-agent",
+    "sub-agent",
+    "context-recovery"
+  ],
+  "author": "enderfga",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/enderfga/openclaw-claude-code-skill"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^3.22.0",
+    "zustand": "^4.4.0",
+    "idb-keyval": "^6.2.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "@types/node": "^20.0.0"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "echo \"No tests yet\""
+  }
+}
