@@ -1,216 +1,212 @@
-# OpenClaw Claude Code Skill
+# Claude Code Skill 🤖
 
-A skill package for [OpenClaw](https://github.com/openclaw/openclaw) / Claude Code that enables:
-
-- **MCP (Model Context Protocol)** integration for sub-agent orchestration
-- **State persistence** and context recovery across sessions
-- **Session synchronization** for multi-device support
+Control Claude Code via MCP (Model Context Protocol). This CLI provides programmatic access to Claude Code's full capabilities including persistent sessions, agent teams, and advanced tool control.
 
 ## Features
 
-### 🔌 MCP Integration
-
-Full implementation of the [Model Context Protocol](https://spec.modelcontextprotocol.io/) for managing AI tool servers:
-
-- Create and manage MCP client connections
-- Execute tool calls across multiple servers
-- Server lifecycle management (pause/resume/restart)
-
-### 💾 State Persistence
-
-Robust state management with automatic recovery:
-
-- IndexedDB storage with localStorage fallback
-- Hydration tracking to prevent data loss
-- Timestamp-based merge conflict resolution
-
-### 🔄 Session Sync
-
-Smart synchronization utilities:
-
-- Merge sessions from multiple sources
-- Preserve message history across devices
-- Key-value store merging
+- 🔌 **MCP Protocol** - Direct access to all Claude Code tools
+- 💾 **Persistent Sessions** - Maintain context across multiple interactions
+- 🤝 **Agent Teams** - Deploy multiple specialized agents
+- 🔧 **Tool Control** - Fine-grained control over which tools are available
+- 📊 **Budget Limits** - Set spending caps on API usage
+- 🔄 **Session Management** - Fork, pause, resume, search sessions
 
 ## Installation
 
 ```bash
-npm install openclaw-claude-code-skill
-# or
-yarn add openclaw-claude-code-skill
+# Clone
+git clone https://github.com/Enderfga/openclaw-claude-code-skill.git
+cd openclaw-claude-code-skill
+
+# Install dependencies
+npm install
+
+# Build
+npm run build
+
+# Link globally (optional)
+npm link
 ```
+
+## Requirements
+
+- Node.js 18+
+- Backend API server running (see Configuration)
+- Claude Code CLI (for the backend)
 
 ## Quick Start
 
-### MCP Server Management
+```bash
+# Start a persistent session
+claude-code-skill session-start myproject -d ~/project \
+  --permission-mode plan \
+  --allowed-tools "Bash,Read,Edit,Write,Glob,Grep"
 
-```typescript
-import {
-  initializeMcpSystem,
-  addMcpServer,
-  executeMcpAction,
-  getAllTools,
-} from "openclaw-claude-code-skill";
+# Send a task
+claude-code-skill session-send myproject "Find all TODO comments and fix them" --stream
 
-// Initialize the MCP system
-await initializeMcpSystem();
+# Check status
+claude-code-skill session-status myproject
 
-// Add a new MCP server
-await addMcpServer("my-server", {
-  command: "npx",
-  args: ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/dir"],
-});
-
-// Get all available tools
-const tools = await getAllTools();
-console.log(tools);
-
-// Execute a tool call
-const result = await executeMcpAction("my-server", {
-  method: "tools/call",
-  params: {
-    name: "read_file",
-    arguments: { path: "/path/to/file.txt" },
-  },
-});
+# Stop when done
+claude-code-skill session-stop myproject
 ```
 
-### State Persistence
+## Configuration
 
-```typescript
-import { createPersistStore, indexedDBStorage } from "openclaw-claude-code-skill";
+The CLI connects to a backend API server. Set the URL via environment variable:
 
-// Create a persistent store
-const useMyStore = createPersistStore(
-  // Initial state
-  { count: 0, items: [] },
-  // Methods
-  (set, get) => ({
-    increment: () => set({ count: get().count + 1 }),
-    addItem: (item: string) => set({ items: [...get().items, item] }),
-  }),
-  // Persist options
-  { name: "my-store" },
-  // Optional: use IndexedDB
-  indexedDBStorage
-);
-
-// Use in your app
-const { count, increment, _hasHydrated } = useMyStore();
-
-// Check if state has been restored
-if (_hasHydrated) {
-  console.log("State restored from storage!");
-}
+```bash
+# Default: http://127.0.0.1:18795
+export CLAUDE_CODE_API_URL="http://your-server:port"
 ```
 
-### Session Synchronization
+## Basic Commands
 
-```typescript
-import { mergeSessions, mergeWithUpdate } from "openclaw-claude-code-skill";
+```bash
+# Connection
+claude-code-skill connect          # Connect to MCP server
+claude-code-skill disconnect       # Disconnect
+claude-code-skill status           # Check connection status
+claude-code-skill tools            # List available tools
 
-// Merge chat sessions from multiple sources
-const mergedSessions = mergeSessions(localSessions, remoteSessions);
-
-// Merge configs with timestamp-based resolution
-const mergedConfig = mergeWithUpdate(localConfig, remoteConfig);
+# Direct tool calls
+claude-code-skill bash "npm test"
+claude-code-skill read /path/to/file.ts
+claude-code-skill glob "**/*.ts" -p ~/project
+claude-code-skill grep "TODO" -p ~/project -c
+claude-code-skill call Write -a '{"file_path":"/tmp/test.txt","content":"Hello"}'
 ```
 
-## MCP Configuration
+## Persistent Sessions
 
-Create a `mcp_config.json` file:
+### Start a Session
 
-```json
-{
-  "mcpServers": {
-    "filesystem": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/allowed/dir"],
-      "status": "active"
-    },
-    "github": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-github"],
-      "env": {
-        "GITHUB_TOKEN": "your-token-here"
-      },
-      "status": "active"
-    }
-  }
-}
+```bash
+# Basic
+claude-code-skill session-start myproject -d ~/project
+
+# With options
+claude-code-skill session-start advanced -d ~/project \
+  --permission-mode plan \
+  --allowed-tools "Bash,Read,Edit,Write" \
+  --max-budget 2.00 \
+  --append-system-prompt "Always write tests"
 ```
 
-Set a custom config path:
+### Permission Modes
 
-```typescript
-import { setConfigPath } from "openclaw-claude-code-skill";
+| Mode | Description |
+|------|-------------|
+| `acceptEdits` | Auto-accept file edits (default) |
+| `plan` | Preview changes before applying |
+| `default` | Ask for each operation |
+| `bypassPermissions` | Skip all prompts (dangerous!) |
 
-setConfigPath("/path/to/your/mcp_config.json");
+### Session Management
+
+```bash
+claude-code-skill session-list                    # List active sessions
+claude-code-skill session-send myproject "task"   # Send message
+claude-code-skill session-send myproject "task" --stream  # With streaming
+claude-code-skill session-status myproject        # Get status
+claude-code-skill session-history myproject -n 50 # View history
+claude-code-skill session-pause myproject         # Pause session
+claude-code-skill session-resume-paused myproject # Resume session
+claude-code-skill session-fork myproject exp      # Fork session
+claude-code-skill session-stop myproject          # Stop session
+claude-code-skill session-restart myproject       # Restart failed session
 ```
 
-## API Reference
+## Agent Teams
 
-### MCP Module
+Deploy multiple specialized agents:
 
-| Function | Description |
-|----------|-------------|
-| `initializeMcpSystem()` | Initialize all configured MCP servers |
-| `addMcpServer(id, config)` | Add a new MCP server |
-| `removeMcpServer(id)` | Remove an MCP server |
-| `pauseMcpServer(id)` | Pause an MCP server |
-| `resumeMcpServer(id)` | Resume a paused server |
-| `executeMcpAction(id, request)` | Execute a tool call |
-| `getAllTools()` | Get all available tools |
-| `getClientsStatus()` | Get status of all clients |
-| `setConfigPath(path)` | Set custom config file path |
+```bash
+claude-code-skill session-start team -d ~/project \
+  --agents '{
+    "architect": {"prompt": "Design system architecture"},
+    "developer": {"prompt": "Implement features"},
+    "reviewer": {"prompt": "Review code quality"}
+  }' \
+  --agent architect
 
-### Store Module
+# Switch agents with @mention
+claude-code-skill session-send team "@developer implement the design"
+claude-code-skill session-send team "@reviewer review the implementation"
+```
 
-| Function | Description |
-|----------|-------------|
-| `createPersistStore(state, methods, options, storage?)` | Create a persistent Zustand store |
-| `indexedDBStorage` | IndexedDB storage adapter |
-| `mergeSessions(local, remote)` | Merge session arrays |
-| `mergeWithUpdate(local, remote)` | Merge with timestamp resolution |
-| `mergeKeyValueStore(local, remote)` | Merge key-value stores |
+## Tool Control
 
-## Types
+```bash
+# Allow specific tools
+--allowed-tools "Bash(git:*,npm:*),Read,Edit"
 
-```typescript
-interface ServerConfig {
-  command: string;
-  args: string[];
-  env?: Record<string, string>;
-  status?: "active" | "paused" | "error";
-}
+# Deny dangerous operations
+--disallowed-tools "Bash(rm:*,sudo:*),Write(/etc/*)"
 
-interface McpRequestMessage {
-  jsonrpc?: "2.0";
-  id?: string | number;
-  method: "tools/call" | string;
-  params?: Record<string, unknown>;
-}
+# Limit available tools
+--tools "Read,Glob,Grep"
+```
 
-type ServerStatus = "undefined" | "active" | "paused" | "error" | "initializing";
+## Session Search
+
+```bash
+claude-code-skill sessions -n 20              # List recent sessions
+claude-code-skill session-search "bug fix"    # Search by query
+claude-code-skill session-search --project ~/myapp  # Filter by project
+claude-code-skill session-search --since "2h" # Filter by time
+claude-code-skill resume <session-id> "Continue" -d ~/project  # Resume
+```
+
+## Batch Operations
+
+```bash
+# Read multiple files
+claude-code-skill batch-read "src/**/*.ts" "tests/**/*.test.ts" -p ~/project
 ```
 
 ## Examples
 
-See the [examples](./examples) directory for complete usage examples:
+### Code Review
 
-- [Basic MCP Setup](./examples/basic-mcp.ts)
-- [Persistent Chat Store](./examples/chat-store.ts)
+```bash
+claude-code-skill session-start review -d ~/project --permission-mode plan
+claude-code-skill session-send review "Review all TypeScript files for security issues" --stream
+```
 
-## Contributing
+### Automated Testing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+```bash
+claude-code-skill session-start test -d ~/project \
+  --allowed-tools "Bash(npm:*),Read,Write" \
+  --max-budget 1.00
+
+claude-code-skill session-send test "Find untested functions and write tests"
+```
+
+### Multi-Agent Debugging
+
+```bash
+claude-code-skill session-start debug -d ~/project \
+  --agents '{
+    "detective": {"prompt": "Find root cause"},
+    "fixer": {"prompt": "Implement fixes"},
+    "tester": {"prompt": "Verify fixes"}
+  }' \
+  --agent detective
+
+claude-code-skill session-send debug "Memory leak in API server" --stream
+```
+
+## Best Practices
+
+1. **Use persistent sessions** for multi-step tasks
+2. **Enable streaming** (`--stream`) for long operations
+3. **Set budget limits** (`--max-budget`) for safety
+4. **Use plan mode** (`--permission-mode plan`) for critical changes
+5. **Fork before experiments** to preserve the original session
 
 ## License
 
-MIT License - see [LICENSE](./LICENSE) for details.
-
-## Related Projects
-
-- [OpenClaw](https://github.com/openclaw/openclaw) - The AI assistant platform
-- [Model Context Protocol](https://github.com/modelcontextprotocol) - The protocol specification
-- [Zustand](https://github.com/pmndrs/zustand) - State management library
+MIT
