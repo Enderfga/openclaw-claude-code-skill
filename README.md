@@ -34,6 +34,29 @@ npm link
 - Backend API server running (see Configuration)
 - Claude Code CLI (for the backend)
 
+## Multi-Model Support (Proxy) 🌐
+
+Use `--base-url` to route requests through a custom API endpoint, enabling **any OpenAI-compatible model** to power Claude Code:
+
+```bash
+# Use Gemini via claude-code-proxy
+claude-code-skill session-start gemini-task -d ~/project \
+  --model gemini-2.0-flash \
+  --base-url http://127.0.0.1:8082
+
+# Use GPT-4o via OpenAI-compatible endpoint
+claude-code-skill session-start gpt-task -d ~/project \
+  --model gpt-4o \
+  --base-url https://api.openai.com/v1
+
+# Use any OpenRouter model
+claude-code-skill session-start mixtral-task -d ~/project \
+  --model mistral/mixtral-8x7b \
+  --base-url https://openrouter.ai/api/v1
+```
+
+This unlocks the full Claude Code agent loop (persistent sessions, tool use, multi-turn) with any model backend.
+
 ## Quick Start
 
 ```bash
@@ -58,6 +81,8 @@ The CLI connects to a backend API server. Set the URL via environment variable:
 
 ```bash
 # Default: http://127.0.0.1:18795
+export BACKEND_API_URL="http://your-server:port"
+# Alias also supported:
 export CLAUDE_CODE_API_URL="http://your-server:port"
 ```
 
@@ -86,13 +111,24 @@ claude-code-skill call Write -a '{"file_path":"/tmp/test.txt","content":"Hello"}
 # Basic
 claude-code-skill session-start myproject -d ~/project
 
-# With options
+# With custom model and API endpoint (proxy support)
+claude-code-skill session-start gemini-dev -d ~/project \
+  --model gemini-2.0-flash \
+  --base-url http://127.0.0.1:8082
+
+# With full options
 claude-code-skill session-start advanced -d ~/project \
+  --model claude-opus-4-5 \
   --permission-mode plan \
   --allowed-tools "Bash,Read,Edit,Write" \
   --max-budget 2.00 \
   --append-system-prompt "Always write tests"
 ```
+
+| Option | Description |
+|--------|-------------|
+| `-m, --model <model>` | Model to use (e.g., `claude-opus-4-5`, `gemini-2.0-flash`) |
+| `-b, --base-url <url>` | Custom API endpoint for proxy/alternative backends |
 
 ### Permission Modes
 
