@@ -1,14 +1,13 @@
 #!/usr/bin/env node
 /**
- * Claude Code Skill
+ * Claude Code Skill for ClawdBot
  * Provides CLI access to Claude Code via MCP protocol
  */
 
 import { Command } from 'commander';
 
-// Backend API URL - configure via environment variable
-const API_URL = process.env.CLAUDE_CODE_API_URL || 'http://127.0.0.1:18795';
-const PREFIX = '/claude-code';
+const BACKEND_API_URL = process.env.BACKEND_API_URL || 'http://127.0.0.1:18795';
+const PREFIX = '/backend-api/claude-code';
 
 interface ApiResponse {
   ok: boolean;
@@ -17,7 +16,7 @@ interface ApiResponse {
 }
 
 async function apiCall(endpoint: string, method: string = 'GET', body?: object): Promise<ApiResponse> {
-  const url = `${API_URL}${PREFIX}${endpoint}`;
+  const url = `${BACKEND_API_URL}${PREFIX}${endpoint}`;
   const options: RequestInit = {
     method,
     headers: { 'Content-Type': 'application/json' },
@@ -292,6 +291,7 @@ program
   .option('-d, --cwd <dir>', 'Working directory')
   .option('-r, --resume <sessionId>', 'Resume an existing Claude session')
   .option('-m, --model <model>', 'Model to use')
+  .option('-b, --base-url <url>', 'Custom API endpoint (for Gemini/GPT proxy)')
   .option('--permission-mode <mode>', 'Permission mode: acceptEdits, bypassPermissions, default, delegate, dontAsk, plan', 'acceptEdits')
   .option('--fork-session', 'Create a new session ID instead of reusing (use with --resume)')
   .option('--allowed-tools <tools>', 'Comma-separated list of tools to auto-approve (e.g. Bash,Read,Edit)')
@@ -310,6 +310,7 @@ program
     cwd?: string;
     resume?: string;
     model?: string;
+    baseUrl?: string;
     permissionMode?: string;
     forkSession?: boolean;
     allowedTools?: string;
@@ -333,6 +334,7 @@ program
       cwd: options.cwd,
       sessionId: options.resume,
       model: options.model,
+      baseUrl: options.baseUrl,
       permissionMode: options.permissionMode || 'acceptEdits',
       forkSession: options.forkSession
     };
@@ -388,6 +390,8 @@ program
         console.log(`Claude Session ID: ${result.claudeSessionId}`);
       }
       // Show active options
+      if (options.model) console.log(`Model: ${options.model}`);
+      if (options.baseUrl) console.log(`Base URL: ${options.baseUrl}`);
       console.log(`Permission mode: ${options.permissionMode || 'acceptEdits'}`);
       if (options.allowedTools) console.log(`Allowed tools: ${options.allowedTools}`);
       if (options.disallowedTools) console.log(`Disallowed tools: ${options.disallowedTools}`);
@@ -411,7 +415,7 @@ program
 
     if (options.stream) {
       // Use SSE streaming endpoint
-      const url = `${API_URL}${PREFIX}/session/send-stream`;
+      const url = `${BACKEND_API_URL}${PREFIX}/session/send-stream`;
       try {
         const response = await fetch(url, {
           method: 'POST',

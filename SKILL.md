@@ -1,12 +1,29 @@
 ---
 name: claude-code-skill
-description: Control Claude Code via MCP protocol. Execute commands, read/write files, search code, and use all Claude Code tools programmatically with persistent session and agent team support.
-version: 1.0.0
+description: Control Claude Code via MCP protocol. Execute commands, read/write files, search code, and use all Claude Code tools programmatically with agent team support.
+homepage: https://github.com/enderfga/claude-code-skill
+metadata: {
+  "clawdis": {
+    "emoji": "🤖",
+    "requires": {
+      "bins": ["node"],
+      "env": []
+    },
+    "install": [
+      {
+        "id": "local",
+        "kind": "local",
+        "path": "~/clawd/claude-code-skill",
+        "label": "Use local installation"
+      }
+    ]
+  }
+}
 ---
 
 # Claude Code Skill
 
-Control Claude Code via MCP (Model Context Protocol). This skill unleashes the full power of Claude Code for AI agents, including persistent sessions, agent teams, and advanced tool control.
+Control Claude Code via MCP (Model Context Protocol). This skill unleashes the full power of Claude Code for openclaw agents, including persistent sessions, agent teams, and advanced tool control.
 
 ## ⚡ Quick Start
 
@@ -68,6 +85,11 @@ claude-code-skill disconnect
 # Basic start
 claude-code-skill session-start myproject -d ~/project
 
+# With custom API endpoint (for Gemini/GPT proxy)
+claude-code-skill session-start gemini-task -d ~/project \
+  --base-url http://127.0.0.1:8082 \
+  --model gemini-2.0-flash
+
 # With permission mode (plan = preview changes before applying)
 claude-code-skill session-start review -d ~/project --permission-mode plan
 
@@ -84,7 +106,7 @@ claude-code-skill session-start advanced -d ~/project \
   --allowed-tools "Bash,Read,Edit,Write" \
   --disallowed-tools "Task" \
   --max-budget 5.00 \
-  --model claude-sonnet-4-20250514 \
+  --model claude-opus-4-5 \
   --append-system-prompt "Always write tests" \
   --add-dir "/tmp,/var/log"
 ```
@@ -264,9 +286,33 @@ claude-code-skill session-start fullstack -d ~/project \
 --add-dir "/var/log,/tmp/workspace"
 ```
 
+### Multi-Model Support (Proxy)
+
+Use `--base-url` to route requests through a proxy, enabling other models (Gemini, GPT) to power Claude Code:
+
+```bash
+# Use Gemini via claude-code-proxy
+claude-code-skill session-start gemini-task -d ~/project \
+  --base-url http://127.0.0.1:8082 \
+  --model claude-3-5-sonnet-20241022  # Proxy will map to Gemini
+
+# Use GPT via proxy
+claude-code-skill session-start gpt-task -d ~/project \
+  --base-url http://127.0.0.1:8082 \
+  --model claude-3-haiku-20240307  # Proxy will map to GPT
+```
+
+**Note:** Requires `claude-code-proxy` running on port 8082 with proper API keys configured.
+
+```bash
+# Start the proxy
+cd ~/clawd/claude-code-proxy && source .venv/bin/activate
+uvicorn server:app --host 127.0.0.1 --port 8082
+```
+
 ## 🎓 Best Practices
 
-### For AI Agents
+### For OpenClaw Agents
 
 1. **Always use persistent sessions for multi-step tasks**
    ```bash
@@ -316,13 +362,13 @@ claude-code-skill session-start myproject -d ~/project --resume <old-session-id>
 ## 🏗️ Architecture
 
 ```
-AI Agent / CLI
+openclaw agent
     ↓
 claude-code-skill CLI (this tool)
     ↓ HTTP
-Backend API Server
+backend-api API (:18795)
     ↓ MCP
-Claude Code (claude mcp serve)
+claude mcp serve (Claude Code)
     ↓
 Your files & tools
 ```
@@ -345,18 +391,6 @@ All Claude Code tools are accessible:
 | Git* | Git operations |
 | AskUserQuestion | Interactive prompts |
 | ... | and 10+ more |
-
-## 🔧 Configuration
-
-The CLI connects to a backend API server. Configure via environment variables:
-
-```bash
-# Set the backend URL (default: http://127.0.0.1:18795)
-export CLAUDE_CODE_API_URL="http://your-server:port"
-
-# Or use the default local server
-claude-code-skill connect
-```
 
 ## 📊 Examples
 
@@ -399,6 +433,21 @@ claude-code-skill session-send debug "We have a memory leak in the API server" -
 # Detective investigates, then hands off to fixer, then to tester
 ```
 
-## License
+## 🔗 Integration with OpenClaw
 
-MIT
+When openclaw needs to perform complex coding tasks:
+
+```bash
+# From within openclaw agent context:
+openclaw skills run claude-code-skill -- session-start task -d ~/project
+openclaw skills run claude-code-skill -- session-send task "Implement feature X" --stream
+openclaw skills run claude-code-skill -- session-status task
+```
+
+Or use the skill programmatically via backend-api HTTP API (see TOOLS.md section 3).
+
+## 📖 See Also
+
+- **TOOLS.md section 3** - Full HTTP API documentation
+- **backend-api endpoints** - Backend integration details
+- **Claude Code docs** - Official Claude Code documentation (query via `qmd` tool)
