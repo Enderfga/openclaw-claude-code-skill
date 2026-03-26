@@ -51,7 +51,7 @@ const program = new Command();
 program
   .name('claude-code-skill')
   .description('Control Claude Code via MCP protocol')
-  .version('1.2.0');
+  .version('1.3.0');
 
 // Connect command
 program
@@ -305,7 +305,7 @@ program
   .option('-r, --resume <sessionId>', 'Resume an existing Claude session')
   .option('-m, --model <model>', 'Model to use')
   .option('-b, --base-url <url>', 'Custom API endpoint (for Gemini/GPT proxy)')
-  .option('--permission-mode <mode>', 'Permission mode: acceptEdits, bypassPermissions, default, delegate, dontAsk, plan', 'acceptEdits')
+  .option('--permission-mode <mode>', 'Permission mode: acceptEdits, auto, plan, default, bypassPermissions, delegate, dontAsk', 'acceptEdits')
   .option('--fork-session', 'Create a new session ID instead of reusing (use with --resume)')
   .option('--allowed-tools <tools>', 'Comma-separated list of tools to auto-approve (e.g. Bash,Read,Edit)')
   .option('--disallowed-tools <tools>', 'Comma-separated list of tools to deny')
@@ -321,6 +321,8 @@ program
   .option('--add-dir <dirs>', 'Additional directories to allow tool access (comma-separated)')
   .option('--effort <level>', 'Effort level: low, medium, high, max, auto (default: auto)')
   .option('--model-overrides <json>', 'Model alias overrides as JSON (e.g. \'{"fast":"gemini-2.0-flash"}\')')
+  .option('--enable-auto-mode', 'Enable auto permission mode (classifier-based safety checks)')
+  .option('-n, --session-name <name>', 'Display name for the session')
   .option('--config <file>', 'Load session config from JSON file')
   .action(async (name: string | undefined, options: {
     cwd?: string;
@@ -344,6 +346,8 @@ program
     effort?: string;
     modelOverrides?: string;
     config?: string;
+    enableAutoMode?: boolean;
+    sessionName?: string;
   }) => {
     // Load config file if provided
     if (options.config) {
@@ -436,6 +440,13 @@ program
       }
     }
 
+    if (options.enableAutoMode) {
+      body.enableAutoMode = true;
+    }
+    if (options.sessionName) {
+      body.sessionName = options.sessionName;
+    }
+
     const result = await apiCall('/session/start', 'POST', body);
 
     if (result.ok) {
@@ -453,6 +464,8 @@ program
       if (options.maxTurns) console.log(`Max turns: ${options.maxTurns}`);
       if (options.maxBudget) console.log(`Max budget: $${options.maxBudget}`);
       if (options.effort) console.log(`Effort: ${options.effort}`);
+      if (options.enableAutoMode) console.log(`Auto mode: enabled (classifier safety checks)`);
+      if (options.sessionName) console.log(`Session name: ${options.sessionName}`);
       if (options.forkSession) console.log(`Fork mode: enabled`);
     } else {
       console.error(`Failed: ${result.error}`);

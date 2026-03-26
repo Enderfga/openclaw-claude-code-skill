@@ -53,6 +53,11 @@ claude-code-skill session-compact myproject
 
 # Switch model mid-session
 claude-code-skill session-model myproject opus
+
+# Start with auto mode — classifier approves safe actions automatically
+claude-code-skill session-start myproject -d ~/project \
+  --permission-mode auto --enable-auto-mode \
+  --allowed-tools "Bash,Read,Edit,Write,Glob,Grep"
 ```
 
 ## 🎯 When to Use This Skill
@@ -120,15 +125,27 @@ claude-code-skill session-start advanced -d ~/project \
   --allowed-tools "Bash,Read,Edit,Write" \
   --disallowed-tools "Task" \
   --max-budget 5.00 \
-  --model claude-opus-4-5 \
+  --model claude-opus-4-6 \
   --append-system-prompt "Always write tests" \
   --add-dir "/tmp,/var/log"
+
+# Auto mode — safer than bypassPermissions, fewer prompts than acceptEdits
+claude-code-skill session-start autonomous -d ~/project \
+  --permission-mode auto --enable-auto-mode \
+  --allowed-tools "Bash,Read,Edit,Write,Glob,Grep" \
+  --max-budget 3.00
+
+# Named session for easy identification
+claude-code-skill session-start review -d ~/project \
+  -n "Auth Refactor Review" \
+  --permission-mode plan
 ```
 
 **Permission Modes:**
 | Mode | Description |
 |------|-------------|
 | `acceptEdits` | Auto-accept file edits (default) |
+| `auto` | Classifier-based safety checks, auto-approve safe actions (requires `--enable-auto-mode`) |
 | `plan` | Preview changes before applying |
 | `default` | Ask for each operation |
 | `bypassPermissions` | Skip all prompts (dangerous!) |
@@ -208,7 +225,7 @@ claude-code-skill session-start myproject -d ~/project --effort high
 # Model aliases (built-in: opus, sonnet, haiku, gemini-flash, gemini-pro)
 # Custom aliases via --model-overrides
 claude-code-skill session-start myproject -d ~/project \
-  --model-overrides '{"fast":"gemini-2.0-flash","smart":"claude-opus-4-5"}'
+  --model-overrides '{"fast":"gemini-2.0-flash","smart":"claude-opus-4-6"}'
 ```
 
 #### Cost Tracking
@@ -216,7 +233,7 @@ claude-code-skill session-start myproject -d ~/project \
 ```bash
 # Show cost breakdown for a session
 claude-code-skill session-cost myproject
-# → Model: claude-opus-4-5
+# → Model: claude-opus-4-6
 # → Tokens in: 12,345 | out: 3,456 | cached: 8,901
 # → Breakdown: Input $0.0103 | Cached $0.0033 | Output $0.0518
 # → 💰 Total: $0.0654
