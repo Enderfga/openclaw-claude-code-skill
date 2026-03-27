@@ -240,8 +240,7 @@ function buildPrintArgs(
     args.push('--session-id', config.customSessionId);
   }
 
-  // Prompt last
-  args.push(prompt);
+  // Prompt is now passed via stdin to avoid OS ARG_MAX limits on long prompts
 
   return args;
 }
@@ -277,7 +276,15 @@ async function runClaude(
       TERM: 'dumb',
     };
 
-    const proc = spawn(CLAUDE_BIN, args, { cwd, env });
+    const proc = spawn(CLAUDE_BIN, args, { 
+      cwd, 
+      env,
+      stdio: ['pipe', 'pipe', 'pipe'] 
+    });
+
+    // Write prompt to stdin to handle arbitrarily long prompts
+    proc.stdin.write(prompt);
+    proc.stdin.end();
 
     let stdout = '';
     let stderr = '';
@@ -699,7 +706,15 @@ app.post(`${PREFIX}/session/send-stream`, async (req: Request, res: Response) =>
   session.stats.lastActivity = new Date().toISOString();
 
   const env: NodeJS.ProcessEnv = { ...process.env, ANTHROPIC_API_KEY: API_KEY, NO_COLOR: '1', TERM: 'dumb' };
-  const proc = spawn(CLAUDE_BIN, args, { cwd: session.config.cwd, env });
+  const proc = spawn(CLAUDE_BIN, args, { 
+    cwd: session.config.cwd, 
+    env,
+    stdio: ['pipe', 'pipe', 'pipe'] 
+  });
+
+  // Write the prompt to stdin instead of passing it as a positional arg
+  proc.stdin.write(message);
+  proc.stdin.end();
 
   const abortTimer = setTimeout(() => { proc.kill('SIGTERM'); }, timeoutMs + 30_000);
 
