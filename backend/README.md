@@ -47,6 +47,18 @@ npm run build
 
 The server binds to `127.0.0.1` only (local access).
 
+### Amazon Bedrock Support
+
+If you are using Amazon Bedrock instead of an Anthropic API key, set the following environment variables (e.g., in a `.env` file in the `backend/` directory):
+
+```ini
+CLAUDE_CODE_USE_BEDROCK=1
+AWS_REGION=us-east-1
+ANTHROPIC_MODEL=global.anthropic.claude-sonnet-4-6
+ANTHROPIC_DEFAULT_SONNET_MODEL=us.anthropic.claude-sonnet-4-6
+ANTHROPIC_DEFAULT_OPUS_MODEL=us.anthropic.claude-opus-4-6-v1
+```
+
 ## API
 
 All routes are prefixed with `/backend-api/claude-code`.
