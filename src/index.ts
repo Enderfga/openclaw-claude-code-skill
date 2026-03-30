@@ -324,6 +324,16 @@ program
   .option('--enable-auto-mode', 'Enable auto permission mode (classifier-based safety checks)')
   .option('-n, --session-name <name>', 'Display name for the session')
   .option('--config <file>', 'Load session config from JSON file')
+  // New CLI flags
+  .option('--bare', 'Minimal mode: skip hooks, LSP, auto-memory, CLAUDE.md discovery')
+  .option('-w, --worktree [name]', 'Run session in a git worktree')
+  .option('--fallback-model <model>', 'Auto fallback model when primary is overloaded')
+  .option('--json-schema <schema>', 'JSON Schema for structured output validation')
+  .option('--mcp-config <paths>', 'MCP server config file(s), comma-separated')
+  .option('--settings <pathOrJson>', 'Settings.json path or inline JSON (hooks, permissions, etc.)')
+  .option('--skip-persistence', 'Disable session persistence (--no-session-persistence)')
+  .option('--betas <headers>', 'Custom beta headers, comma-separated')
+  .option('--enable-agent-teams', 'Enable experimental agent teams (multi-instance collaboration)')
   .action(async (name: string | undefined, options: {
     cwd?: string;
     resume?: string;
@@ -348,6 +358,16 @@ program
     config?: string;
     enableAutoMode?: boolean;
     sessionName?: string;
+    // New CLI flags
+    bare?: boolean;
+    worktree?: string | boolean;
+    fallbackModel?: string;
+    jsonSchema?: string;
+    mcpConfig?: string;
+    settings?: string;
+    skipPersistence?: boolean;
+    betas?: string;
+    enableAgentTeams?: boolean;
   }) => {
     // Load config file if provided
     if (options.config) {
@@ -445,6 +465,34 @@ program
     if (options.sessionName) {
       body.sessionName = options.sessionName;
     }
+    // New CLI flags
+    if (options.bare) {
+      body.bare = true;
+    }
+    if (options.worktree !== undefined) {
+      body.worktree = typeof options.worktree === 'string' ? options.worktree : true;
+    }
+    if (options.fallbackModel) {
+      body.fallbackModel = options.fallbackModel;
+    }
+    if (options.jsonSchema) {
+      body.jsonSchema = options.jsonSchema;
+    }
+    if (options.mcpConfig) {
+      body.mcpConfig = options.mcpConfig.split(',').map((s: string) => s.trim());
+    }
+    if (options.settings) {
+      body.settings = options.settings;
+    }
+    if (options.skipPersistence) {
+      body.noSessionPersistence = true;
+    }
+    if (options.betas) {
+      body.betas = options.betas.split(',').map((s: string) => s.trim());
+    }
+    if (options.enableAgentTeams) {
+      body.enableAgentTeams = true;
+    }
 
     const result = await apiCall('/session/start', 'POST', body);
 
@@ -466,6 +514,11 @@ program
       if (options.enableAutoMode) console.log(`Auto mode: enabled (classifier safety checks)`);
       if (options.sessionName) console.log(`Session name: ${options.sessionName}`);
       if (options.forkSession) console.log(`Fork mode: enabled`);
+      if (options.bare) console.log(`Bare mode: enabled`);
+      if (options.worktree) console.log(`Worktree: ${typeof options.worktree === 'string' ? options.worktree : 'auto'}`);
+      if (options.fallbackModel) console.log(`Fallback model: ${options.fallbackModel}`);
+      if (options.settings) console.log(`Settings: ${options.settings}`);
+      if (options.enableAgentTeams) console.log(`Agent teams: enabled (experimental)`);
     } else {
       console.error(`Failed: ${result.error}`);
     }
@@ -995,6 +1048,197 @@ program
     const result = await apiCall('/session/restart', 'POST', { name });
     if (result.ok) {
       console.log(`Session '${name}' restarted.`);
+    } else {
+      console.error(`Failed: ${result.error}`);
+    }
+  });
+
+// ─── Agent Management ────────────────────────────────────────────────────────
+
+program
+  .command('agents-list')
+  .description('List agent definitions from .claude/agents/')
+  .option('-d, --cwd <dir>', 'Project directory to scan')
+  .action(async (options: { cwd?: string }) => {
+    const query = options.cwd ? `?cwd=${encodeURIComponent(options.cwd)}` : '';
+    const result = await apiCall(`/agents${query}`, 'GET');
+    if (result.ok) {
+      const agents = result.agents as Array<{ name: string; description: string }>;
+      if (agents.length === 0) {
+        console.log('No agents found.');
+      } else {
+        console.log(`Found ${agents.length} agent(s):`);
+        for (const a of agents) {
+          console.log(`  ${a.name}${a.description ? ` — ${a.description}` : ''}`);
+        }
+      }
+    } else {
+      console.error(`Failed: ${result.error}`);
+    }
+  });
+
+program
+  .command('agents-create <name>')
+  .description('Create a new agent definition in .claude/agents/')
+  .option('-d, --cwd <dir>', 'Project directory')
+  .option('--description <desc>', 'Agent description')
+  .option('--prompt <prompt>', 'Agent system prompt')
+  .action(async (name: string, options: { cwd?: string; description?: string; prompt?: string }) => {
+    const body: Record<string, unknown> = { name };
+    if (options.cwd) body.cwd = options.cwd;
+    if (options.description) body.description = options.description;
+    if (options.prompt) body.prompt = options.prompt;
+    const result = await apiCall('/agents/create', 'POST', body);
+    if (result.ok) {
+      console.log(`Agent '${name}' created at: ${result.path}`);
+    } else {
+      console.error(`Failed: ${result.error}`);
+    }
+  });
+
+// ─── Skill Management ────────────────────────────────────────────────────────
+
+program
+  .command('skills-list')
+  .description('List skill definitions from .claude/skills/')
+  .option('-d, --cwd <dir>', 'Project directory to scan')
+  .action(async (options: { cwd?: string }) => {
+    const query = options.cwd ? `?cwd=${encodeURIComponent(options.cwd)}` : '';
+    const result = await apiCall(`/skills${query}`, 'GET');
+    if (result.ok) {
+      const skills = result.skills as Array<{ name: string; description: string; hasSkillMd: boolean }>;
+      if (skills.length === 0) {
+        console.log('No skills found.');
+      } else {
+        console.log(`Found ${skills.length} skill(s):`);
+        for (const s of skills) {
+          console.log(`  ${s.name}${s.description ? ` — ${s.description}` : ''}${s.hasSkillMd ? '' : ' (missing SKILL.md)'}`);
+        }
+      }
+    } else {
+      console.error(`Failed: ${result.error}`);
+    }
+  });
+
+program
+  .command('skills-create <name>')
+  .description('Create a new skill in .claude/skills/<name>/SKILL.md')
+  .option('-d, --cwd <dir>', 'Project directory')
+  .option('--description <desc>', 'Skill description')
+  .option('--prompt <prompt>', 'Skill instructions')
+  .option('--trigger <trigger>', 'Trigger condition')
+  .action(async (name: string, options: { cwd?: string; description?: string; prompt?: string; trigger?: string }) => {
+    const body: Record<string, unknown> = { name };
+    if (options.cwd) body.cwd = options.cwd;
+    if (options.description) body.description = options.description;
+    if (options.prompt) body.prompt = options.prompt;
+    if (options.trigger) body.trigger = options.trigger;
+    const result = await apiCall('/skills/create', 'POST', body);
+    if (result.ok) {
+      console.log(`Skill '${name}' created at: ${result.path}`);
+    } else {
+      console.error(`Failed: ${result.error}`);
+    }
+  });
+
+// ─── Rules Management ────────────────────────────────────────────────────────
+
+program
+  .command('rules-list')
+  .description('List conditional rules from .claude/rules/')
+  .option('-d, --cwd <dir>', 'Project directory to scan')
+  .action(async (options: { cwd?: string }) => {
+    const query = options.cwd ? `?cwd=${encodeURIComponent(options.cwd)}` : '';
+    const result = await apiCall(`/rules${query}`, 'GET');
+    if (result.ok) {
+      const rules = result.rules as Array<{ name: string; description: string; paths: string; condition: string }>;
+      if (rules.length === 0) {
+        console.log('No rules found.');
+      } else {
+        console.log(`Found ${rules.length} rule(s):`);
+        for (const r of rules) {
+          let info = `  ${r.name}`;
+          if (r.description) info += ` — ${r.description}`;
+          if (r.paths) info += ` [paths: ${r.paths}]`;
+          if (r.condition) info += ` [if: ${r.condition}]`;
+          console.log(info);
+        }
+      }
+    } else {
+      console.error(`Failed: ${result.error}`);
+    }
+  });
+
+program
+  .command('rules-create <name>')
+  .description('Create a conditional rule in .claude/rules/')
+  .option('-d, --cwd <dir>', 'Project directory')
+  .option('--description <desc>', 'Rule description')
+  .option('--content <text>', 'Rule content/instructions')
+  .option('--paths <glob>', 'File path filter (e.g. "*.py" or "src/**/*.ts")')
+  .option('--condition <expr>', 'Condition using permission rule syntax (e.g. "Bash(git *)")')
+  .action(async (name: string, options: { cwd?: string; description?: string; content?: string; paths?: string; condition?: string }) => {
+    const body: Record<string, unknown> = { name };
+    if (options.cwd) body.cwd = options.cwd;
+    if (options.description) body.description = options.description;
+    if (options.content) body.content = options.content;
+    if (options.paths) body.paths = options.paths;
+    if (options.condition) body.condition = options.condition;
+    const result = await apiCall('/rules/create', 'POST', body);
+    if (result.ok) {
+      console.log(`Rule '${name}' created at: ${result.path}`);
+    } else {
+      console.error(`Failed: ${result.error}`);
+    }
+  });
+
+// ─── Session Grep ────────────────────────────────────────────────────────────
+
+program
+  .command('session-grep <name> <pattern>')
+  .description('Search session history for a regex pattern')
+  .option('-n, --limit <n>', 'Max results', '50')
+  .action(async (name: string, pattern: string, options: { limit?: string }) => {
+    const result = await apiCall('/session/grep', 'POST', {
+      name, pattern, limit: parseInt(options.limit || '50')
+    });
+    if (result.ok) {
+      const matches = result.matches as Array<unknown>;
+      console.log(`Found ${result.count} match(es):`);
+      for (const m of matches) {
+        if (typeof m === 'string') {
+          console.log(`  ${m}`);
+        } else {
+          console.log(`  ${JSON.stringify(m)}`);
+        }
+      }
+    } else {
+      console.error(`Failed: ${result.error}`);
+    }
+  });
+
+// ─── Agent Teams ─────────────────────────────────────────────────────────────
+
+program
+  .command('session-team-list <name>')
+  .description('List teammates in a team session (requires --enable-agent-teams)')
+  .action(async (name: string) => {
+    const result = await apiCall('/session/team-list', 'POST', { name });
+    if (result.ok) {
+      console.log(result.response || 'No team info available');
+    } else {
+      console.error(`Failed: ${result.error}`);
+    }
+  });
+
+program
+  .command('session-team-send <name> <teammate> <message>')
+  .description('Send a message to a teammate in a team session')
+  .action(async (name: string, teammate: string, message: string) => {
+    console.log(`Sending to @${teammate}...`);
+    const result = await apiCall('/session/team-send', 'POST', { name, teammate, message });
+    if (result.ok) {
+      console.log(result.response || 'Message sent');
     } else {
       console.error(`Failed: ${result.error}`);
     }

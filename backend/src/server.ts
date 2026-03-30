@@ -78,6 +78,16 @@ interface SessionConfig {
   // resume from existing claude session
   claudeResumeId?: string;
   resolvedModel?: string;
+  // New CLI flags
+  bare?: boolean;
+  worktree?: string | boolean;
+  fallbackModel?: string;
+  jsonSchema?: string;
+  mcpConfig?: string | string[];
+  settings?: string;
+  noSessionPersistence?: boolean;
+  betas?: string | string[];
+  enableAgentTeams?: boolean;
 }
 
 interface ActiveSession {
@@ -240,9 +250,39 @@ function buildPrintArgs(
     args.push('--session-id', config.customSessionId);
   }
 
+  // New CLI flags
+  if (config.bare) args.push('--bare');
+  if (config.worktree) {
+    args.push('--worktree');
+    if (typeof config.worktree === 'string') args.push(config.worktree);
+  }
+  if (config.fallbackModel) args.push('--fallback-model', config.fallbackModel);
+  if (config.jsonSchema) args.push('--json-schema', config.jsonSchema);
+  if (config.mcpConfig) {
+    const configs = Array.isArray(config.mcpConfig) ? config.mcpConfig : [config.mcpConfig];
+    for (const c of configs) args.push('--mcp-config', c);
+  }
+  if (config.settings) args.push('--settings', config.settings);
+  if (config.noSessionPersistence) args.push('--no-session-persistence');
+  if (config.betas) {
+    const bl = Array.isArray(config.betas) ? config.betas : [config.betas];
+    for (const b of bl) args.push('--betas', b);
+  }
+
   // Prompt is now passed via stdin to avoid OS ARG_MAX limits on long prompts
 
   return args;
+}
+
+function buildExtraEnv(config: SessionConfig): Record<string, string> | undefined {
+  const env: Record<string, string> = {};
+  if (config.enableAgentTeams) {
+    env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS = 'true';
+  }
+  if (config.baseUrl) {
+    env.ANTHROPIC_BASE_URL = config.baseUrl;
+  }
+  return Object.keys(env).length ? env : undefined;
 }
 
 // ─── Run claude -p (stream-json) ──────────────────────────────────────────────
@@ -266,6 +306,7 @@ async function runClaude(
   args: string[],
   cwd: string,
   onEvent?: (ev: StreamEvent) => void,
+  extraEnv?: Record<string, string>,
 ): Promise<{ output: string; sessionId?: string; error?: string; events: StreamEvent[] }> {
 
   return new Promise((resolve) => {
@@ -274,6 +315,7 @@ async function runClaude(
       ANTHROPIC_API_KEY: API_KEY,
       NO_COLOR: '1',
       TERM: 'dumb',
+      ...extraEnv,
     };
 
     const proc = spawn(CLAUDE_BIN, args, { 
@@ -566,6 +608,16 @@ app.post(`${PREFIX}/session/start`, async (req: Request, res: Response) => {
     enableAutoMode: body.enableAutoMode,
     forkSession: body.forkSession,
     claudeResumeId: body.sessionId, // resume from existing claude session
+    // New CLI flags
+    bare: body.bare,
+    worktree: body.worktree,
+    fallbackModel: body.fallbackModel,
+    jsonSchema: body.jsonSchema,
+    mcpConfig: body.mcpConfig,
+    settings: body.settings,
+    noSessionPersistence: body.noSessionPersistence,
+    betas: body.betas,
+    enableAgentTeams: body.enableAgentTeams,
   };
 
   if (config.model) {
@@ -639,7 +691,7 @@ app.post(`${PREFIX}/session/send`, async (req: Request, res: Response) => {
         fireWebhook(session.hooks.onToolError, { hook: 'onToolError', session: name, data: ev, timestamp: new Date().toISOString() });
       }
     }
-  });
+  }, buildExtraEnv(session.config));
 
   session.stats.turns++;
 
@@ -705,11 +757,11 @@ app.post(`${PREFIX}/session/send-stream`, async (req: Request, res: Response) =>
 
   session.stats.lastActivity = new Date().toISOString();
 
-  const env: NodeJS.ProcessEnv = { ...process.env, ANTHROPIC_API_KEY: API_KEY, NO_COLOR: '1', TERM: 'dumb' };
-  const proc = spawn(CLAUDE_BIN, args, { 
-    cwd: session.config.cwd, 
+  const env: NodeJS.ProcessEnv = { ...process.env, ANTHROPIC_API_KEY: API_KEY, NO_COLOR: '1', TERM: 'dumb', ...buildExtraEnv(session.config) };
+  const proc = spawn(CLAUDE_BIN, args, {
+    cwd: session.config.cwd,
     env,
-    stdio: ['pipe', 'pipe', 'pipe'] 
+    stdio: ['pipe', 'pipe', 'pipe']
   });
 
   // Write the prompt to stdin instead of passing it as a positional arg
@@ -1064,6 +1116,162 @@ app.post(`${PREFIX}/session/restart`, (req: Request, res: Response) => {
   session.stats.isReady = true;
   session.stats.lastActivity = new Date().toISOString();
   res.json({ ok: true });
+});
+
+// ─── Agent/Skill Management ──────────────────────────────────────────────────
+
+function listMdFiles(dir: string): Array<{ name: string; file: string; description: string }> {
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir)
+    .filter(f => f.endsWith('.md'))
+    .map(f => {
+      const content = fs.readFileSync(path.join(dir, f), 'utf8');
+      const match = content.match(/^---\n[\s\S]*?description:\s*(.+)/m);
+      return { name: f.replace('.md', ''), file: f, description: match ? match[1].trim() : '' };
+    });
+}
+
+app.get(`${PREFIX}/agents`, (req: Request, res: Response) => {
+  const cwd = (req.query.cwd as string) || os.homedir();
+  const projectAgents = listMdFiles(path.join(cwd, '.claude', 'agents'));
+  const globalAgents = listMdFiles(path.join(os.homedir(), '.claude', 'agents'));
+  const seen = new Set(projectAgents.map(a => a.name));
+  const merged = [...projectAgents, ...globalAgents.filter(a => !seen.has(a.name))];
+  res.json({ ok: true, agents: merged });
+});
+
+app.post(`${PREFIX}/agents/create`, (req: Request, res: Response) => {
+  const { name, cwd, description, prompt } = req.body as { name: string; cwd?: string; description?: string; prompt?: string };
+  if (!name) { res.json({ ok: false, error: "Missing 'name'" }); return; }
+  const dir = path.join(cwd || os.homedir(), '.claude', 'agents');
+  fs.mkdirSync(dir, { recursive: true });
+  const filePath = path.join(dir, `${name}.md`);
+  const content = `---\ndescription: ${description || name}\n---\n\n${prompt || `You are ${name}.`}\n`;
+  fs.writeFileSync(filePath, content);
+  res.json({ ok: true, path: filePath });
+});
+
+app.get(`${PREFIX}/skills`, (req: Request, res: Response) => {
+  const cwd = (req.query.cwd as string) || os.homedir();
+  function listSkills(dir: string) {
+    if (!fs.existsSync(dir)) return [];
+    return fs.readdirSync(dir, { withFileTypes: true })
+      .filter(d => d.isDirectory())
+      .map(d => {
+        const skillMd = path.join(dir, d.name, 'SKILL.md');
+        let description = '';
+        if (fs.existsSync(skillMd)) {
+          const content = fs.readFileSync(skillMd, 'utf8');
+          const match = content.match(/^---\n[\s\S]*?description:\s*(.+)/m);
+          if (match) description = match[1].trim();
+        }
+        return { name: d.name, hasSkillMd: fs.existsSync(skillMd), description };
+      });
+  }
+  const projectSkills = listSkills(path.join(cwd, '.claude', 'skills'));
+  const globalSkills = listSkills(path.join(os.homedir(), '.claude', 'skills'));
+  const seen = new Set(projectSkills.map(s => s.name));
+  const merged = [...projectSkills, ...globalSkills.filter(s => !seen.has(s.name))];
+  res.json({ ok: true, skills: merged });
+});
+
+app.post(`${PREFIX}/skills/create`, (req: Request, res: Response) => {
+  const { name, cwd, description, prompt, trigger } = req.body as {
+    name: string; cwd?: string; description?: string; prompt?: string; trigger?: string;
+  };
+  if (!name) { res.json({ ok: false, error: "Missing 'name'" }); return; }
+  const dir = path.join(cwd || os.homedir(), '.claude', 'skills', name);
+  fs.mkdirSync(dir, { recursive: true });
+  const filePath = path.join(dir, 'SKILL.md');
+  let content = '---\n';
+  if (description) content += `description: ${description}\n`;
+  if (trigger) content += `trigger: ${trigger}\n`;
+  content += `---\n\n${prompt || `# ${name}\n\nSkill instructions here.\n`}\n`;
+  fs.writeFileSync(filePath, content);
+  res.json({ ok: true, path: filePath });
+});
+
+app.post(`${PREFIX}/session/grep`, (req: Request, res: Response) => {
+  const { name, pattern, limit = 50 } = req.body as { name: string; pattern: string; limit?: number };
+  if (!name || !pattern) { res.json({ ok: false, error: "Missing 'name' or 'pattern'" }); return; }
+  const session = getSession(name);
+  if (!session) { res.json({ ok: false, error: `Session '${name}' not found` }); return; }
+  // Search through session events stored in the outputBuffer or stats history
+  // For now, search the output buffer
+  const regex = new RegExp(pattern, 'gi');
+  const lines = session.outputBuffer.split('\n').filter(l => regex.test(l));
+  res.json({ ok: true, count: lines.length, matches: lines.slice(0, limit) });
+});
+
+// ─── Rules Management ────────────────────────────────────────────────────────
+
+app.get(`${PREFIX}/rules`, (req: Request, res: Response) => {
+  const cwd = (req.query.cwd as string) || os.homedir();
+  function listRules(dir: string) {
+    if (!fs.existsSync(dir)) return [];
+    return fs.readdirSync(dir)
+      .filter(f => f.endsWith('.md'))
+      .map(f => {
+        const content = fs.readFileSync(path.join(dir, f), 'utf8');
+        const descMatch = content.match(/^---\n[\s\S]*?description:\s*(.+)/m);
+        const pathsMatch = content.match(/^---\n[\s\S]*?paths:\s*(.+)/m);
+        const ifMatch = content.match(/^---\n[\s\S]*?if:\s*(.+)/m);
+        return {
+          name: f.replace('.md', ''), file: f,
+          description: descMatch ? descMatch[1].trim() : '',
+          paths: pathsMatch ? pathsMatch[1].trim() : '',
+          condition: ifMatch ? ifMatch[1].trim() : ''
+        };
+      });
+  }
+  const projectRules = listRules(path.join(cwd, '.claude', 'rules'));
+  const globalRules = listRules(path.join(os.homedir(), '.claude', 'rules'));
+  const seen = new Set(projectRules.map(r => r.name));
+  const merged = [...projectRules, ...globalRules.filter(r => !seen.has(r.name))];
+  res.json({ ok: true, rules: merged });
+});
+
+app.post(`${PREFIX}/rules/create`, (req: Request, res: Response) => {
+  const { name, cwd, description, content, paths: rulePaths, condition } = req.body as {
+    name: string; cwd?: string; description?: string; content?: string; paths?: string; condition?: string;
+  };
+  if (!name) { res.json({ ok: false, error: "Missing 'name'" }); return; }
+  const dir = path.join(cwd || os.homedir(), '.claude', 'rules');
+  fs.mkdirSync(dir, { recursive: true });
+  const filePath = path.join(dir, `${name}.md`);
+  let fileContent = '---\n';
+  if (description) fileContent += `description: ${description}\n`;
+  if (rulePaths) fileContent += `paths: ${rulePaths}\n`;
+  if (condition) fileContent += `if: ${condition}\n`;
+  fileContent += `---\n\n${content || `# ${name}\n\nRule instructions here.\n`}\n`;
+  fs.writeFileSync(filePath, fileContent);
+  res.json({ ok: true, path: filePath });
+});
+
+// ─── Agent Teams ─────────────────────────────────────────────────────────────
+
+app.post(`${PREFIX}/session/team-list`, async (req: Request, res: Response) => {
+  const { name } = req.body as { name: string };
+  const session = getSession(name);
+  if (!session) { res.json({ ok: false, error: `Session '${name}' not found` }); return; }
+
+  const args = buildPrintArgs('/team', session.config, session.claudeSessionId);
+  const result = await runClaude(args, session.config.cwd, undefined, buildExtraEnv(session.config));
+  res.json({ ok: true, response: result.output });
+});
+
+app.post(`${PREFIX}/session/team-send`, async (req: Request, res: Response) => {
+  const { name, teammate, message } = req.body as { name: string; teammate: string; message: string };
+  if (!name || !teammate || !message) { res.json({ ok: false, error: "Missing 'name', 'teammate', or 'message'" }); return; }
+  const session = getSession(name);
+  if (!session) { res.json({ ok: false, error: `Session '${name}' not found` }); return; }
+
+  const teamMessage = `@${teammate} ${message}`;
+  const args = buildPrintArgs(teamMessage, session.config, session.claudeSessionId);
+  const result = await runClaude(args, session.config.cwd, undefined, buildExtraEnv(session.config));
+  session.stats.turns++;
+  session.stats.lastActivity = new Date().toISOString();
+  res.json({ ok: true, response: result.output });
 });
 
 // ─── Start server ─────────────────────────────────────────────────────────────
