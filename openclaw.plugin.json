@@ -1,0 +1,76 @@
+{
+  "id": "openclaw-claude-code",
+  "name": "Claude Code SDK",
+  "description": "Full-featured Claude Code integration — session management, agent teams, worktree isolation, multi-model proxy, structured output, and plan mode workflows",
+  "enabledByDefault": false,
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "claudeBin": {
+        "type": "string",
+        "default": "claude",
+        "description": "Path to Claude Code CLI binary"
+      },
+      "defaultModel": {
+        "type": "string",
+        "description": "Default model for new sessions"
+      },
+      "defaultPermissionMode": {
+        "type": "string",
+        "enum": ["acceptEdits", "bypassPermissions", "default", "delegate", "dontAsk", "plan", "auto"],
+        "default": "acceptEdits"
+      },
+      "defaultEffort": {
+        "type": "string",
+        "enum": ["low", "medium", "high", "max", "auto"],
+        "default": "auto"
+      },
+      "maxConcurrentSessions": {
+        "type": "number",
+        "default": 5,
+        "description": "Maximum concurrent Claude Code sessions"
+      },
+      "sessionTtlMinutes": {
+        "type": "number",
+        "default": 120,
+        "description": "Auto-cleanup idle sessions after N minutes"
+      },
+      "proxy": {
+        "type": "object",
+        "description": "Multi-model proxy settings for Gemini/GPT/other model support via Anthropic format translation",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "default": false,
+            "description": "Enable built-in multi-model proxy"
+          },
+          "bigModel": {
+            "type": "string",
+            "default": "gemini-2.5-pro",
+            "description": "Default model for complex requests"
+          },
+          "smallModel": {
+            "type": "string",
+            "default": "gemini-2.5-flash",
+            "description": "Default model for fast requests"
+          }
+        }
+      }
+    }
+  },
+  "contracts": {
+    "tools": [
+      "claude_session_start",
+      "claude_session_send",
+      "claude_session_stop",
+      "claude_session_list",
+      "claude_session_status",
+      "claude_session_grep",
+      "claude_session_compact",
+      "claude_agents_list",
+      "claude_team_list",
+      "claude_team_send"
+    ]
+  },
+  "skills": ["skills/SKILL.md"]
+}

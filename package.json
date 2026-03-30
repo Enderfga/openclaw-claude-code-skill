@@ -1,26 +1,42 @@
 {
-  "name": "claude-code-skill",
-  "version": "1.0.0",
-  "description": "ClawdBot skill to control Claude Code via MCP",
+  "name": "@enderfga/openclaw-claude-code",
+  "version": "2.0.0",
+  "description": "OpenClaw plugin — full Claude Code SDK with session management, agent teams, multi-model proxy, and plan mode",
   "type": "module",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
   "bin": {
-    "claude-code-skill": "./dist/index.js"
+    "claude-code-skill": "./dist/bin/cli.js"
   },
-  "main": "./dist/index.js",
+  "openclaw": {
+    "extensions": [
+      "./dist/src/index.js"
+    ]
+  },
+  "files": [
+    "dist/",
+    "skills/",
+    "openclaw.plugin.json",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/index.ts",
-    "start": "node dist/index.js"
+    "prepublishOnly": "npm run build"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=22.0.0"
   },
-  "keywords": ["claude", "claude-code", "mcp", "openclaw", "skill"],
+  "keywords": ["openclaw", "plugin", "claude-code", "agent-teams", "mcp", "multi-model", "proxy"],
   "author": "enderfga",
   "license": "MIT",
   "dependencies": {
     "commander": "^12.1.0",
-    "node-fetch": "^3.3.2"
+    "uuid": "^10.0.0"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.3.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
