@@ -708,6 +708,7 @@ export class SessionManager {
   // ─── Council ──────────────────────────────────────────────────────────
 
   private councils = new Map<string, Council>();
+  private static COUNCIL_RESULT_TTL_MS = 30 * 60 * 1000; // keep completed councils queryable for 30 min
 
   councilStart(task: string, config: CouncilConfig): CouncilSession {
     const council = new Council(config, this);
@@ -718,14 +719,18 @@ export class SessionManager {
 
     // Run in background — callers poll via councilStatus()
     council.run().then(() => {
-      // Cleanup on completion
-      this.councils.delete(initialSession.id);
+      // Keep completed council queryable; schedule cleanup after TTL
+      this._scheduleCouncilCleanup(initialSession.id);
     }).catch((err) => {
       console.error(`[SessionManager] Council ${initialSession.id} failed:`, err);
-      this.councils.delete(initialSession.id);
+      this._scheduleCouncilCleanup(initialSession.id);
     });
 
     return initialSession;
+  }
+
+  private _scheduleCouncilCleanup(id: string): void {
+    setTimeout(() => { this.councils.delete(id); }, SessionManager.COUNCIL_RESULT_TTL_MS);
   }
 
   councilStatus(id: string): CouncilSession | undefined {
