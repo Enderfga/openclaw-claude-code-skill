@@ -208,6 +208,18 @@ const plugin = {
       },
     });
 
+    // ─── Tool: claude_session_health ─────────────────────────────────────
+
+    api.registerTool({
+      name: 'claude_session_health',
+      description: 'Check plugin health and get diagnostics for all active Claude Code sessions. Returns readiness, cost, context usage, and last activity for each session.',
+      parameters: { type: 'object', properties: {} },
+      execute: async (_id) => {
+        if (!manager) return { ok: true, version: '2.0.0', sessions: 0, sessionNames: [], uptime: process.uptime(), details: [] };
+        return manager.health();
+      },
+    });
+
     // ─── Tool: claude_session_status ─────────────────────────────────────
 
     api.registerTool({

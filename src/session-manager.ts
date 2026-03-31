@@ -324,6 +324,49 @@ export class SessionManager {
     };
   }
 
+  // ─── Health ────────────────────────────────────────────────────────────
+
+  health(): {
+    ok: boolean;
+    version: string;
+    sessions: number;
+    sessionNames: string[];
+    uptime: number;
+    details: Array<{
+      name: string;
+      ready: boolean;
+      busy: boolean;
+      paused: boolean;
+      turns: number;
+      costUsd: number;
+      contextPercent: number;
+      lastActivity: string | null;
+    }>;
+  } {
+    const sessions = Array.from(this.sessions.entries()).map(([name, managed]) => {
+      const stats = managed.session.getStats();
+      return {
+        name,
+        ready: stats.isReady,
+        busy: managed.session.listenerCount('turn_complete') > 0,
+        paused: false,
+        turns: stats.turns,
+        costUsd: stats.costUsd,
+        contextPercent: stats.contextPercent,
+        lastActivity: stats.lastActivity,
+      };
+    });
+
+    return {
+      ok: true,
+      version: '2.0.0',
+      sessions: this.sessions.size,
+      sessionNames: Array.from(this.sessions.keys()),
+      uptime: process.uptime(),
+      details: sessions,
+    };
+  }
+
   // ─── Shutdown ──────────────────────────────────────────────────────────
 
   async shutdown(): Promise<void> {
