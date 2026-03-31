@@ -202,9 +202,20 @@ const plugin = {
       description: 'List all active Claude Code sessions',
       parameters: { type: 'object', properties: {} },
       execute: async (_id) => {
-        // If nothing has been initialised yet, there are no sessions.
-        if (!manager) return { ok: true, sessions: [] };
-        return { ok: true, sessions: manager.listSessions() };
+        if (!manager) return { ok: true, sessions: [], persisted: [] };
+        return { ok: true, sessions: manager.listSessions(), persisted: manager.listPersistedSessions() };
+      },
+    });
+
+    // ─── Tool: claude_sessions_overview ──────────────────────────────────
+
+    api.registerTool({
+      name: 'claude_sessions_overview',
+      description: 'Get an aggregate overview of all active Claude Code sessions — readiness, busy/paused state, cost, context usage, and last activity for each. Use this for a dashboard view across all sessions. For single-session detail, use claude_session_status instead.',
+      parameters: { type: 'object', properties: {} },
+      execute: async (_id) => {
+        if (!manager) return { ok: true, version: 'unknown', sessions: 0, sessionNames: [], uptime: process.uptime(), details: [] };
+        return manager.health();
       },
     });
 
@@ -319,6 +330,52 @@ const plugin = {
           args.message as string
         );
         return { ok: true, ...result };
+      },
+    });
+
+    // ─── Tool: claude_session_update_tools ───────────────────────────────
+
+    api.registerTool({
+      name: 'claude_session_update_tools',
+      description: 'Update allowedTools or disallowedTools for a running session. Restarts the session process with --resume to apply the new tool constraints while preserving conversation history. Rejects if the session is currently busy.',
+      parameters: {
+        type: 'object',
+        properties: {
+          name:             { type: 'string', description: 'Session name' },
+          allowedTools:     { type: 'array', items: { type: 'string' }, description: 'New allowedTools list (replaces existing, or merges if merge:true)' },
+          disallowedTools:  { type: 'array', items: { type: 'string' }, description: 'New disallowedTools list (replaces existing, or merges if merge:true)' },
+          removeTools:      { type: 'array', items: { type: 'string' }, description: 'Tools to remove from allowedTools/disallowedTools (applied after merge)' },
+          merge:            { type: 'boolean', description: 'Merge with existing lists instead of replacing (default false)' },
+        },
+        required: ['name'],
+      },
+      execute: async (_id, args) => {
+        const info = await getManager().updateTools(args.name as string, {
+          allowedTools: args.allowedTools as string[] | undefined,
+          disallowedTools: args.disallowedTools as string[] | undefined,
+          removeTools: args.removeTools as string[] | undefined,
+          merge: args.merge as boolean | undefined,
+        });
+        return { ok: true, restarted: true, ...info };
+      },
+    });
+
+    // ─── Tool: claude_session_switch_model ───────────────────────────────
+
+    api.registerTool({
+      name: 'claude_session_switch_model',
+      description: 'Switch the model for a running session immediately. Restarts the session process with --resume so the new model takes effect on the next message while preserving conversation history.',
+      parameters: {
+        type: 'object',
+        properties: {
+          name:  { type: 'string', description: 'Session name' },
+          model: { type: 'string', description: 'New model (opus, sonnet, haiku, gemini-pro, etc.)' },
+        },
+        required: ['name', 'model'],
+      },
+      execute: async (_id, args) => {
+        const info = await getManager().switchModel(args.name as string, args.model as string);
+        return { ok: true, restarted: true, ...info };
       },
     });
   },
