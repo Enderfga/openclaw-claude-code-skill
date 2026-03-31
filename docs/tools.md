@@ -183,3 +183,82 @@ Inject a user message into the next round of a running council.
 |-----------|------|----------|
 | `id` | string | yes |
 | `message` | string | yes |
+
+---
+
+## Inbox (3)
+
+### `claude_session_send_to`
+
+Send a cross-session message. Delivered immediately if target is idle, queued if busy.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `from` | string | yes | Sender session name |
+| `to` | string | yes | Target session name, or `"*"` for broadcast |
+| `message` | string | yes | Message text |
+| `summary` | string | | Short preview (5-10 words) |
+
+### `claude_session_inbox`
+
+Read inbox messages for a session.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `name` | string | yes | Session name |
+| `unreadOnly` | boolean | | Only unread (default true) |
+
+### `claude_session_deliver_inbox`
+
+Deliver all queued inbox messages to an idle session.
+
+| Parameter | Type | Required |
+|-----------|------|----------|
+| `name` | string | yes |
+
+---
+
+## Ultraplan (2)
+
+### `ultraplan_start`
+
+Start a dedicated Opus planning session (up to 30 min). Runs in background.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `task` | string | yes | What to plan |
+| `cwd` | string | | Project directory |
+| `model` | string | | Model (default: opus) |
+| `timeout` | number | | Timeout ms (default 1800000) |
+
+### `ultraplan_status`
+
+Get status and plan text when completed.
+
+| Parameter | Type | Required |
+|-----------|------|----------|
+| `id` | string | yes |
+
+---
+
+## Ultrareview (2)
+
+### `ultrareview_start`
+
+Launch a fleet of bug-hunting agents (1-20) reviewing code from different angles.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `cwd` | string | yes | Project directory |
+| `agentCount` | number | | Agents (1-20, default 5) |
+| `maxDurationMinutes` | number | | Duration (5-25 min, default 10) |
+| `model` | string | | Model for reviewers |
+| `focus` | string | | Review focus area |
+
+### `ultrareview_status`
+
+Get status and findings when completed.
+
+| Parameter | Type | Required |
+|-----------|------|----------|
+| `id` | string | yes |

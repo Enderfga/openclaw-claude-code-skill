@@ -499,6 +499,150 @@ const plugin = {
         return { ok: true };
       },
     });
+    // ─── Tool: claude_session_send_to ─────────────────────────────────
+
+    api.registerTool({
+      name: 'claude_session_send_to',
+      description: 'Send a cross-session message from one session to another. If the target is idle, the message is delivered immediately. If busy, it is queued in the inbox for later delivery. Use "*" as target to broadcast to all other sessions.',
+      parameters: {
+        type: 'object',
+        properties: {
+          from:    { type: 'string', description: 'Sender session name' },
+          to:      { type: 'string', description: 'Target session name, or "*" for broadcast' },
+          message: { type: 'string', description: 'Message text' },
+          summary: { type: 'string', description: 'Short preview (5-10 words)' },
+        },
+        required: ['from', 'to', 'message'],
+      },
+      execute: async (_id, args) => {
+        const result = await getManager().sessionSendTo(
+          args.from as string, args.to as string,
+          args.message as string, args.summary as string | undefined,
+        );
+        return { ok: true, ...result };
+      },
+    });
+
+    // ─── Tool: claude_session_inbox ──────────────────────────────────
+
+    api.registerTool({
+      name: 'claude_session_inbox',
+      description: 'Read inbox messages for a session. Returns unread messages by default.',
+      parameters: {
+        type: 'object',
+        properties: {
+          name:       { type: 'string', description: 'Session name' },
+          unreadOnly: { type: 'boolean', description: 'Only unread messages (default true)' },
+        },
+        required: ['name'],
+      },
+      execute: async (_id, args) => {
+        const messages = getManager().sessionInbox(args.name as string, (args.unreadOnly as boolean | undefined) ?? true);
+        return { ok: true, count: messages.length, messages };
+      },
+    });
+
+    // ─── Tool: claude_session_deliver_inbox ──────────────────────────
+
+    api.registerTool({
+      name: 'claude_session_deliver_inbox',
+      description: 'Deliver all queued inbox messages to an idle session. Call this when a session finishes a task to process waiting messages.',
+      parameters: {
+        type: 'object',
+        properties: { name: { type: 'string', description: 'Session name' } },
+        required: ['name'],
+      },
+      execute: async (_id, args) => {
+        const count = await getManager().sessionDeliverInbox(args.name as string);
+        return { ok: true, delivered: count };
+      },
+    });
+
+    // ─── Tool: ultraplan_start ──────────────────────────────────────
+
+    api.registerTool({
+      name: 'ultraplan_start',
+      description: 'Start an Ultraplan session: a dedicated Opus planning session that explores your project for up to 30 minutes and produces a detailed implementation plan. Runs in background.',
+      parameters: {
+        type: 'object',
+        properties: {
+          task:    { type: 'string', description: 'What to plan — describe the feature, refactor, or problem' },
+          cwd:     { type: 'string', description: 'Project directory to explore' },
+          model:   { type: 'string', description: 'Model to use (default: opus)' },
+          timeout: { type: 'number', description: 'Timeout in ms (default: 1800000 = 30 min)' },
+        },
+        required: ['task'],
+      },
+      execute: async (_id, args) => {
+        const result = getManager().ultraplanStart(args.task as string, {
+          cwd: args.cwd as string | undefined,
+          model: args.model as string | undefined,
+          timeout: args.timeout as number | undefined,
+        });
+        return { ok: true, ...result, note: 'Ultraplan running in background. Poll with ultraplan_status.' };
+      },
+    });
+
+    // ─── Tool: ultraplan_status ─────────────────────────────────────
+
+    api.registerTool({
+      name: 'ultraplan_status',
+      description: 'Get the status of an Ultraplan session. Returns the plan text when completed.',
+      parameters: {
+        type: 'object',
+        properties: { id: { type: 'string', description: 'Ultraplan ID' } },
+        required: ['id'],
+      },
+      execute: async (_id, args) => {
+        const result = getManager().ultraplanStatus(args.id as string);
+        if (!result) return { ok: false, error: 'Ultraplan not found' };
+        return { ok: true, ...result };
+      },
+    });
+
+    // ─── Tool: ultrareview_start ────────────────────────────────────
+
+    api.registerTool({
+      name: 'ultrareview_start',
+      description: 'Start an Ultrareview: a fleet of bug-hunting agents (5-20) that review your codebase from different angles in parallel. Each agent specializes in a different area (security, performance, logic, types, etc.). Runs in background.',
+      parameters: {
+        type: 'object',
+        properties: {
+          cwd:                 { type: 'string', description: 'Project directory to review' },
+          agentCount:          { type: 'number', description: 'Number of reviewer agents (1-20, default 5)' },
+          maxDurationMinutes:  { type: 'number', description: 'Max review duration in minutes (5-25, default 10)' },
+          model:               { type: 'string', description: 'Model for reviewers (default: session default)' },
+          focus:               { type: 'string', description: 'Review focus area (default: bugs + security + quality)' },
+        },
+        required: ['cwd'],
+      },
+      execute: async (_id, args) => {
+        const result = getManager().ultrareviewStart(args.cwd as string, {
+          agentCount: args.agentCount as number | undefined,
+          maxDurationMinutes: args.maxDurationMinutes as number | undefined,
+          model: args.model as string | undefined,
+          focus: args.focus as string | undefined,
+        });
+        return { ok: true, ...result, note: 'Ultrareview running in background. Poll with ultrareview_status.' };
+      },
+    });
+
+    // ─── Tool: ultrareview_status ───────────────────────────────────
+
+    api.registerTool({
+      name: 'ultrareview_status',
+      description: 'Get the status of an Ultrareview. Returns all findings when completed.',
+      parameters: {
+        type: 'object',
+        properties: { id: { type: 'string', description: 'Ultrareview ID' } },
+        required: ['id'],
+      },
+      execute: async (_id, args) => {
+        const result = getManager().ultrareviewStatus(args.id as string);
+        if (!result) return { ok: false, error: 'Ultrareview not found' };
+        return { ok: true, ...result };
+      },
+    });
   },
 };
 

@@ -308,6 +308,37 @@ export const MODEL_ALIASES: Record<string, string> = {
   'gemini-pro': 'gemini-2.5-pro',
 };
 
+// ─── Inbox Types ────────────────────────────────────────────────────────────
+
+export interface InboxMessage {
+  from: string;
+  text: string;
+  timestamp: string;
+  read: boolean;
+  summary?: string;
+}
+
+export interface UltraplanResult {
+  id: string;
+  status: 'running' | 'completed' | 'error' | 'timeout';
+  plan?: string;
+  sessionName: string;
+  startTime: string;
+  endTime?: string;
+  error?: string;
+}
+
+export interface UltrareviewResult {
+  id: string;
+  status: 'running' | 'completed' | 'error';
+  councilId: string;
+  findings?: string;
+  agentCount: number;
+  startTime: string;
+  endTime?: string;
+  error?: string;
+}
+
 // ─── Council Types ──────────────────────────────────────────────────────────
 
 export type CouncilEventType =

@@ -121,6 +121,9 @@ import {
   type ISession,
   type CouncilConfig,
   type CouncilSession,
+  type InboxMessage,
+  type UltraplanResult,
+  type UltrareviewResult,
   MODEL_ALIASES,
 } from './types.js';
 import { Council } from './council.js';
@@ -662,6 +665,10 @@ export class SessionManager {
       clearInterval(this.cleanupTimer);
       this.cleanupTimer = null;
     }
+    // Stop ultrareview pollers
+    for (const [, timer] of this.ultrareviewPollers) clearInterval(timer);
+    this.ultrareviewPollers.clear();
+    // Stop all sessions
     for (const [name, managed] of this.sessions) {
       try { managed.session.stop(); } catch {}
       console.log(`[SessionManager] Stopped session: ${name}`);
@@ -778,6 +785,267 @@ export class SessionManager {
     const council = this.councils.get(id);
     if (!council) throw new Error(`Council '${id}' not found`);
     council.injectMessage(message);
+  }
+
+  // ─── Inbox (cross-session messaging) ────────────────────────────────
+
+  private inboxes = new Map<string, InboxMessage[]>();
+  private static MAX_INBOX_SIZE = 200;
+
+  private static _escapeXmlAttr(s: string): string {
+    return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  /**
+   * Send a message from one session to another.
+   * If the target is idle, the message is delivered as a user turn.
+   * If the target is busy, it's queued in the inbox for later delivery.
+   */
+  async sessionSendTo(from: string, to: string, message: string, summary?: string): Promise<{ delivered: boolean; queued: boolean }> {
+    // Validate both sessions exist
+    if (!this.sessions.has(from)) throw new Error(`Sender session '${from}' not found`);
+    if (to !== '*' && !this.sessions.has(to)) throw new Error(`Target session '${to}' not found`);
+
+    const inboxMsg: InboxMessage = {
+      from,
+      text: message,
+      timestamp: new Date().toISOString(),
+      read: false,
+      summary,
+    };
+
+    // Broadcast
+    if (to === '*') {
+      let delivered = 0;
+      for (const [name] of this.sessions) {
+        if (name === from) continue;
+        const ok = await this._deliverOrQueue(name, inboxMsg);
+        if (ok) delivered++;
+      }
+      return { delivered: delivered > 0, queued: delivered === 0 };
+    }
+
+    const delivered = await this._deliverOrQueue(to, inboxMsg);
+    return { delivered, queued: !delivered };
+  }
+
+  private _wrapCrossSessionMessage(msg: InboxMessage): string {
+    const esc = SessionManager._escapeXmlAttr;
+    const attrs = `from="${esc(msg.from)}"${msg.summary ? ` summary="${esc(msg.summary)}"` : ''}`;
+    return `<cross-session-message ${attrs}>\n${msg.text}\n</cross-session-message>`;
+  }
+
+  private async _deliverOrQueue(sessionName: string, msg: InboxMessage): Promise<boolean> {
+    const managed = this.sessions.get(sessionName);
+    if (!managed) return false;
+
+    // If session is idle, deliver directly
+    if (!managed.session.isBusy && managed.session.isReady) {
+      try {
+        await managed.session.send(this._wrapCrossSessionMessage(msg), { waitForComplete: false });
+        msg.read = true;
+        return true;
+      } catch {
+        // Fall through to queue
+      }
+    }
+
+    // Queue in inbox (with size cap — drop oldest read messages first)
+    if (!this.inboxes.has(sessionName)) this.inboxes.set(sessionName, []);
+    const inbox = this.inboxes.get(sessionName)!;
+    if (inbox.length >= SessionManager.MAX_INBOX_SIZE) {
+      const readIdx = inbox.findIndex(m => m.read);
+      if (readIdx >= 0) inbox.splice(readIdx, 1);
+      else inbox.shift(); // drop oldest unread as last resort
+    }
+    inbox.push(msg);
+    return false;
+  }
+
+  /** Read inbox messages for a session */
+  sessionInbox(name: string, unreadOnly = true): InboxMessage[] {
+    const inbox = this.inboxes.get(name) || [];
+    return unreadOnly ? inbox.filter(m => !m.read) : inbox;
+  }
+
+  /** Deliver all queued messages to an idle session, then clear */
+  async sessionDeliverInbox(name: string): Promise<number> {
+    const managed = this._getSession(name);
+    const inbox = this.inboxes.get(name);
+    if (!inbox || inbox.length === 0) return 0;
+
+    const unread = inbox.filter(m => !m.read);
+    if (unread.length === 0) return 0;
+
+    // Format all unread messages into one delivery
+    const formatted = unread.map(m => this._wrapCrossSessionMessage(m)).join('\n\n');
+
+    await managed.session.send(formatted, { waitForComplete: false });
+    for (const m of unread) m.read = true;
+    return unread.length;
+  }
+
+  // ─── Ultraplan ────────────────────────────────────────────────────────
+
+  private ultraplans = new Map<string, UltraplanResult>();
+  private static ULTRAPLAN_TIMEOUT_MS = 30 * 60 * 1000; // 30 min
+  private static ULTRAPLAN_RESULT_TTL_MS = 30 * 60 * 1000;
+
+  ultraplanStart(task: string, opts?: { model?: string; cwd?: string; timeout?: number }): UltraplanResult {
+    const id = `ultraplan-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const sessionName = `ultraplan-${id}`;
+    const timeout = opts?.timeout || SessionManager.ULTRAPLAN_TIMEOUT_MS;
+
+    const result: UltraplanResult = {
+      id,
+      status: 'running',
+      sessionName,
+      startTime: new Date().toISOString(),
+    };
+    this.ultraplans.set(id, result);
+
+    // Run in background
+    this._runUltraplan(id, sessionName, task, opts?.model || 'opus', opts?.cwd || process.cwd(), timeout)
+      .catch(err => {
+        result.status = 'error';
+        result.error = (err as Error).message;
+        result.endTime = new Date().toISOString();
+      })
+      .finally(() => {
+        // Cleanup session
+        this.stopSession(sessionName).catch(err => {
+          console.error(`[SessionManager] Failed to stop ultraplan session '${sessionName}':`, err);
+        });
+        setTimeout(() => this.ultraplans.delete(id), SessionManager.ULTRAPLAN_RESULT_TTL_MS);
+      });
+
+    return result;
+  }
+
+  private async _runUltraplan(id: string, sessionName: string, task: string, model: string, cwd: string, timeout: number): Promise<void> {
+    const result = this.ultraplans.get(id)!;
+
+    await this.startSession({
+      name: sessionName,
+      cwd,
+      model,
+      permissionMode: 'plan',
+      effort: 'max',
+      appendSystemPrompt: 'You are in ultraplan mode. Explore the project thoroughly, analyze feasibility, and produce a detailed, actionable plan. Do NOT write code — plan only. Output your final plan in a clear markdown format.',
+    });
+
+    const planPrompt = `# Ultraplan Task\n\n${task}\n\nExplore the project, understand the codebase, analyze feasibility, and produce a comprehensive implementation plan. Take your time (up to 30 minutes). Be thorough.`;
+
+    const sendResult = await this.sendMessage(sessionName, planPrompt, { timeout });
+
+    result.plan = sendResult.output;
+    result.status = 'completed';
+    result.endTime = new Date().toISOString();
+  }
+
+  ultraplanStatus(id: string): UltraplanResult | undefined {
+    return this.ultraplans.get(id);
+  }
+
+  // ─── Ultrareview ──────────────────────────────────────────────────────
+
+  private ultrareviews = new Map<string, UltrareviewResult>();
+  private ultrareviewPollers = new Map<string, ReturnType<typeof setInterval>>();
+  private static ULTRAREVIEW_RESULT_TTL_MS = 30 * 60 * 1000;
+
+  ultrareviewStart(cwd: string, opts?: { agentCount?: number; maxDurationMinutes?: number; model?: string; focus?: string }): UltrareviewResult {
+    const id = `ultrareview-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const agentCount = Math.min(20, Math.max(1, opts?.agentCount || 5));
+
+    const result: UltrareviewResult = {
+      id,
+      status: 'running',
+      councilId: '',
+      agentCount,
+      startTime: new Date().toISOString(),
+    };
+    this.ultrareviews.set(id, result);
+
+    // Build reviewer agents
+    const reviewAngles = [
+      { name: 'SecurityReviewer', emoji: '🔒', persona: 'You are a security expert. Focus on: injection vulnerabilities, auth flaws, data exposure, OWASP top 10, secrets in code.' },
+      { name: 'LogicReviewer', emoji: '🧠', persona: 'You are a logic analyst. Focus on: off-by-one errors, race conditions, null/undefined handling, edge cases, incorrect assumptions.' },
+      { name: 'PerformanceReviewer', emoji: '⚡', persona: 'You are a performance engineer. Focus on: O(n^2) loops, memory leaks, unnecessary allocations, missing caching, N+1 queries.' },
+      { name: 'APIReviewer', emoji: '🔌', persona: 'You are an API design reviewer. Focus on: inconsistent interfaces, missing validation, error handling gaps, backwards compatibility.' },
+      { name: 'TestReviewer', emoji: '🧪', persona: 'You are a test coverage analyst. Focus on: untested code paths, missing edge case tests, flaky test patterns, assertion quality.' },
+      { name: 'TypeReviewer', emoji: '📐', persona: 'You are a type safety reviewer. Focus on: any casts, unsafe assertions, missing null checks, generic misuse, type narrowing gaps.' },
+      { name: 'ConcurrencyReviewer', emoji: '🔀', persona: 'You are a concurrency expert. Focus on: race conditions, deadlocks, shared state mutations, async error handling, promise leaks.' },
+      { name: 'ErrorReviewer', emoji: '💥', persona: 'You are an error handling reviewer. Focus on: swallowed errors, missing try/catch, unhelpful error messages, crash-on-startup paths.' },
+      { name: 'DependencyReviewer', emoji: '📦', persona: 'You are a dependency auditor. Focus on: outdated packages, known CVEs, unnecessary dependencies, license issues.' },
+      { name: 'ReadabilityReviewer', emoji: '📖', persona: 'You are a readability reviewer. Focus on: unclear naming, complex functions, missing context, dead code, confusing control flow.' },
+      { name: 'DataReviewer', emoji: '💾', persona: 'You are a data integrity reviewer. Focus on: data validation, schema mismatches, migration issues, encoding problems, data loss paths.' },
+      { name: 'ConfigReviewer', emoji: '⚙️', persona: 'You are a configuration reviewer. Focus on: hardcoded values, missing env vars, insecure defaults, missing fallbacks.' },
+      { name: 'ScalabilityReviewer', emoji: '📈', persona: 'You are a scalability reviewer. Focus on: single points of failure, stateful bottlenecks, missing pagination, unbounded growth.' },
+      { name: 'DocReviewer', emoji: '📝', persona: 'You are a documentation reviewer. Focus on: outdated docs, missing API docs, misleading comments, undocumented behavior.' },
+      { name: 'A11yReviewer', emoji: '♿', persona: 'You are an accessibility reviewer. Focus on: missing ARIA labels, keyboard navigation, color contrast, screen reader support.' },
+      { name: 'I18nReviewer', emoji: '🌍', persona: 'You are an i18n reviewer. Focus on: hardcoded strings, locale handling, date/number formatting, RTL support.' },
+      { name: 'NetworkReviewer', emoji: '🌐', persona: 'You are a network reviewer. Focus on: missing timeouts, retry logic, connection pooling, request size limits.' },
+      { name: 'AuthReviewer', emoji: '🔑', persona: 'You are an auth reviewer. Focus on: token handling, session management, CSRF protection, permission checks.' },
+      { name: 'CryptoReviewer', emoji: '🔐', persona: 'You are a cryptography reviewer. Focus on: weak algorithms, key management, random number generation, hash collisions.' },
+      { name: 'MemoryReviewer', emoji: '🧹', persona: 'You are a memory reviewer. Focus on: memory leaks, circular references, large object retention, stream handling.' },
+    ];
+
+    const agents = reviewAngles.slice(0, agentCount).map(a => ({
+      ...a,
+      model: opts?.model,
+    }));
+
+    const maxMinutes = Math.min(25, Math.max(5, opts?.maxDurationMinutes || 10));
+    const focus = opts?.focus || 'Find bugs, security issues, and code quality problems';
+
+    const councilConfig: CouncilConfig = {
+      name: 'ultrareview',
+      agents,
+      maxRounds: 2, // Review doesn't need many rounds — find bugs, then synthesize
+      projectDir: cwd,
+      agentTimeoutMs: maxMinutes * 60 * 1000,
+      maxTurnsPerAgent: 20,
+    };
+
+    const councilSession = this.councilStart(
+      `# Code Review Task\n\nReview the codebase in this project. ${focus}.\n\nEach reviewer: examine the code from your specialty angle, report bugs found with file paths and line numbers. Vote [CONSENSUS: YES] when your review is complete.`,
+      councilConfig,
+    );
+
+    result.councilId = councilSession.id;
+
+    // Poll council for completion (store ref for shutdown cleanup)
+    const pollInterval = setInterval(() => {
+      try {
+        const status = this.councilStatus(councilSession.id);
+        if (!status || status.status === 'running') return;
+
+        clearInterval(pollInterval);
+        this.ultrareviewPollers.delete(id);
+        result.status = status.status === 'error' ? 'error' : 'completed';
+        result.endTime = new Date().toISOString();
+
+        // Synthesize findings from all agent responses
+        if (status.responses.length > 0) {
+          result.findings = status.responses
+            .map(r => `## ${r.agent}\n\n${r.content}`)
+            .join('\n\n---\n\n');
+        }
+
+        setTimeout(() => this.ultrareviews.delete(id), SessionManager.ULTRAREVIEW_RESULT_TTL_MS);
+      } catch {
+        // Council may have been cleaned up; stop polling
+        clearInterval(pollInterval);
+        this.ultrareviewPollers.delete(id);
+      }
+    }, 5000);
+    this.ultrareviewPollers.set(id, pollInterval);
+
+    return result;
+  }
+
+  ultrareviewStatus(id: string): UltrareviewResult | undefined {
+    return this.ultrareviews.get(id);
   }
 
   private _cleanupIdleSessions(): void {

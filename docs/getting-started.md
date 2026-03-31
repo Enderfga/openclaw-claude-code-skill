@@ -83,7 +83,9 @@ In `~/.openclaw/openclaw.json`:
 ## Next Steps
 
 - [Sessions](./sessions.md) — persistent session lifecycle and management
+- [Session Inbox](./inbox.md) — cross-session messaging
 - [Multi-Engine](./multi-engine.md) — using Claude Code and Codex side by side
 - [Council](./council.md) — multi-agent collaboration with consensus voting
-- [Tools Reference](./tools.md) — complete tool API reference
+- [Ultraplan & Ultrareview](./ultra.md) — deep planning and fleet code review
+- [Tools Reference](./tools.md) — complete tool API reference (24 tools)
 - [CLI Reference](./cli.md) — command-line interface

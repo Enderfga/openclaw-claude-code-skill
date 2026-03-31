@@ -67,16 +67,51 @@ const session = manager.councilStart('Build a REST API with auth', {
 
 See [Council](./docs/council.md) for the full collaboration protocol.
 
-### 17 Tools
+### 24 Tools
 
 | Category | Tools |
 |----------|-------|
 | Session Lifecycle | `claude_session_start`, `send`, `stop`, `list`, `overview` |
 | Session Operations | `status`, `grep`, `compact`, `update_tools`, `switch_model` |
+| Inbox | `session_send_to`, `session_inbox`, `session_deliver_inbox` |
 | Agent Teams | `agents_list`, `team_list`, `team_send` |
 | Council | `council_start`, `council_status`, `council_abort`, `council_inject` |
+| Ultraplan | `ultraplan_start`, `ultraplan_status` |
+| Ultrareview | `ultrareview_start`, `ultrareview_status` |
 
 See [Tools Reference](./docs/tools.md) for complete API.
+
+### Session Inbox
+
+Cross-session messaging: sessions can send messages to each other. Idle sessions receive immediately; busy sessions queue for later delivery.
+
+```typescript
+await manager.sessionSendTo('planner', 'coder', 'The auth module needs rate limiting');
+await manager.sessionSendTo('monitor', '*', 'Build failed!');  // broadcast
+```
+
+### Ultraplan
+
+Dedicated Opus planning session that explores your project for up to 30 minutes and produces a detailed implementation plan.
+
+```typescript
+const plan = manager.ultraplanStart('Add OAuth2 support with Google and GitHub providers', {
+  cwd: '/project',
+});
+// Poll: manager.ultraplanStatus(plan.id)
+```
+
+### Ultrareview
+
+Fleet of 5-20 bug-hunting agents that review your codebase in parallel, each from a different angle (security, performance, logic, types, etc.).
+
+```typescript
+const review = manager.ultrareviewStart('/project', {
+  agentCount: 10,
+  maxDurationMinutes: 15,
+});
+// Poll: manager.ultrareviewStatus(review.id)
+```
 
 ### And More
 
@@ -90,7 +125,7 @@ See [Tools Reference](./docs/tools.md) for complete API.
 
 ```
 src/
-├── index.ts                    # Plugin entry — 17 tools + proxy route
+├── index.ts                    # Plugin entry — 24 tools + proxy route
 ├── types.ts                    # Shared types, ISession interface, model pricing
 ├── persistent-session.ts       # Claude Code engine (ISession)
 ├── persistent-codex-session.ts # Codex engine (ISession)
@@ -113,9 +148,11 @@ src/
 |-----|-------------|
 | [Getting Started](./docs/getting-started.md) | Installation, configuration, first session |
 | [Sessions](./docs/sessions.md) | Persistent sessions, resume, model switching, cost tracking |
+| [Session Inbox](./docs/inbox.md) | Cross-session messaging |
 | [Multi-Engine](./docs/multi-engine.md) | Claude + Codex engines, ISession interface, adding engines |
 | [Council](./docs/council.md) | Multi-agent collaboration, worktree isolation, consensus voting |
-| [Tools Reference](./docs/tools.md) | Complete tool API with all parameters |
+| [Ultraplan & Ultrareview](./docs/ultra.md) | Deep planning and fleet code review |
+| [Tools Reference](./docs/tools.md) | Complete tool API (24 tools) |
 | [CLI Reference](./docs/cli.md) | Command-line interface |
 | [Contributing](./CONTRIBUTING.md) | Dev setup, code style, PR guidelines |
 
