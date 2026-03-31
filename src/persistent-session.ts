@@ -72,6 +72,7 @@ export class PersistentClaudeSession extends EventEmitter {
   private proc: ChildProcess | null = null;
   private _isReady = false;
   private _isPaused = false;
+  private _isBusy = false;
   private currentRequestId = 0;
   private _streamCallbacks: StreamCallbacks | null = null;
   private _contextHighFired = false;
@@ -103,6 +104,8 @@ export class PersistentClaudeSession extends EventEmitter {
   }
 
   get isReady(): boolean { return this._isReady; }
+  get isPaused(): boolean { return this._isPaused; }
+  get isBusy(): boolean { return this._isBusy; }
 
   // ─── Start ───────────────────────────────────────────────────────────────
 
@@ -445,9 +448,11 @@ export class PersistentClaudeSession extends EventEmitter {
     if (options.callbacks) this._streamCallbacks = options.callbacks;
 
     if (options.waitForComplete) {
+      this._isBusy = true;
       try {
         return await this._waitForTurnComplete(options.timeout || 300_000);
       } finally {
+        this._isBusy = false;
         if (options.callbacks) this._streamCallbacks = null;
       }
     }
