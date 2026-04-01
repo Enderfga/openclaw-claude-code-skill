@@ -25,14 +25,18 @@ import {
   type AgentPersona,
   type CouncilEvent,
   type EngineType,
+  type SessionConfig,
+  type SessionInfo,
+  type SendOptions,
+  type SendResult,
 } from './types.js';
 import { parseConsensus, stripConsensusTags, hasConsensusMarker } from './consensus.js';
 
 // Forward-declare SessionManager to avoid circular imports at the type level.
 // The actual instance is injected via constructor.
 interface SessionManagerLike {
-  startSession(config: Record<string, unknown>): Promise<{ name: string; claudeSessionId?: string }>;
-  sendMessage(name: string, message: string, options?: Record<string, unknown>): Promise<{ output: string }>;
+  startSession(config: Partial<SessionConfig> & { name?: string }): Promise<SessionInfo>;
+  sendMessage(name: string, message: string, options?: Partial<SendOptions>): Promise<SendResult>;
   stopSession(name: string): Promise<void>;
 }
 
