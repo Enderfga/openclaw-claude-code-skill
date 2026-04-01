@@ -4,7 +4,7 @@ Programmable bridge that turns coding CLIs into headless, agentic engines — pe
 
 [![npm version](https://img.shields.io/npm/v/@enderfga/openclaw-claude-code.svg)](https://www.npmjs.com/package/@enderfga/openclaw-claude-code)
 [![CI](https://github.com/Enderfga/openclaw-claude-code/actions/workflows/ci.yml/badge.svg)](https://github.com/Enderfga/openclaw-claude-code/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-74%20passed-brightgreen)](https://github.com/Enderfga/openclaw-claude-code/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/badge/tests-162%20passed-brightgreen)](https://github.com/Enderfga/openclaw-claude-code/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
 ## Why This Exists
@@ -41,7 +41,7 @@ See [Getting Started](./docs/getting-started.md) for full setup guide.
 
 ### Multi-Engine Sessions
 
-Drive Claude Code and OpenAI Codex through a unified `ISession` interface. Each engine manages its own subprocess, events, and cost tracking.
+Drive Claude Code, OpenAI Codex, and Google Gemini through a unified `ISession` interface. Each engine manages its own subprocess, events, and cost tracking.
 
 ```typescript
 // Claude Code engine (default)
@@ -49,6 +49,9 @@ await manager.startSession({ name: 'claude-task', engine: 'claude', model: 'opus
 
 // Codex engine
 await manager.startSession({ name: 'codex-task', engine: 'codex', model: 'o4-mini' });
+
+// Gemini engine
+await manager.startSession({ name: 'gemini-task', engine: 'gemini', model: 'gemini-pro' });
 ```
 
 See [Multi-Engine](./docs/multi-engine.md) for architecture and adding new engines.
@@ -133,6 +136,7 @@ graph TD
     B --> C[SessionManager]
     C --> D[Claude Engine<br/>persistent-session.ts]
     C --> E[Codex Engine<br/>persistent-codex-session.ts]
+    C --> K[Gemini Engine<br/>persistent-gemini-session.ts]
     C --> F[Council<br/>council.ts]
     C --> G[Inbox / Ultraplan / Ultrareview]
     F -->|git worktree per agent| D
@@ -146,7 +150,8 @@ src/
 ├── index.ts                    # Plugin entry — 24 tools + proxy route
 ├── types.ts                    # Shared types, ISession interface, model pricing
 ├── persistent-session.ts       # Claude Code engine (ISession)
-├── persistent-codex-session.ts # Codex engine (ISession)
+├── persistent-codex-session.ts  # Codex engine (ISession)
+├── persistent-gemini-session.ts # Gemini engine (ISession)
 ├── session-manager.ts          # Multi-session orchestration + council management
 ├── council.ts                  # Multi-agent council orchestration
 ├── consensus.ts                # Consensus vote parsing
@@ -167,7 +172,7 @@ src/
 | [Getting Started](./docs/getting-started.md) | Installation, configuration, first session |
 | [Sessions](./docs/sessions.md) | Persistent sessions, resume, model switching, cost tracking |
 | [Session Inbox](./docs/inbox.md) | Cross-session messaging |
-| [Multi-Engine](./docs/multi-engine.md) | Claude + Codex engines, ISession interface, adding engines |
+| [Multi-Engine](./docs/multi-engine.md) | Claude + Codex + Gemini engines, ISession interface |
 | [Council](./docs/council.md) | Multi-agent collaboration, worktree isolation, consensus voting |
 | [Ultraplan & Ultrareview](./docs/ultra.md) | Deep planning and fleet code review |
 | [Tools Reference](./docs/tools.md) | Complete tool API (24 tools) |
@@ -180,6 +185,7 @@ src/
 - **Claude Code CLI** — `npm install -g @anthropic-ai/claude-code`
 - **OpenClaw >= 2026.3.0** (optional, for plugin mode)
 - **Codex CLI** (optional) — `npm install -g @openai/codex`
+- **Gemini CLI** (optional) — `npm install -g @google/gemini-cli`
 
 ## License
 

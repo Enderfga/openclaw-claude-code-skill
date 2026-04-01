@@ -4,7 +4,7 @@ This file provides context for Claude Code when working on this project.
 
 ## Architecture
 
-OpenClaw plugin that wraps Claude Code CLI (and optionally Codex CLI) into a
+OpenClaw plugin that wraps coding CLIs (Claude Code, Codex, Gemini) into a
 managed session layer. Key source files:
 
 | File | Purpose |
@@ -13,6 +13,7 @@ managed session layer. Key source files:
 | `src/session-manager.ts` | Core orchestrator — session lifecycle, inbox, council, ultraplan/ultrareview |
 | `src/persistent-session.ts` | Claude Code CLI wrapper (spawn, JSON protocol, stream parsing) |
 | `src/persistent-codex-session.ts` | Codex CLI wrapper (same ISession interface) |
+| `src/persistent-gemini-session.ts` | Gemini CLI wrapper (stream-json, per-message spawning) |
 | `src/council.ts` | Multi-agent collaboration engine with git worktree isolation |
 | `src/consensus.ts` | Consensus voting parser for council |
 | `src/types.ts` | All shared types, interfaces, model pricing |
