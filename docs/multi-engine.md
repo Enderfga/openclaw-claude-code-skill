@@ -10,7 +10,8 @@ SessionManager
 │   └── Wraps: claude CLI (stream-json protocol, persistent subprocess)
 ├── engine: 'codex'  → PersistentCodexSession
 │   └── Wraps: codex CLI (--full-auto --quiet, per-message spawning)
-└── engine: '...'    → future engines (ISession interface)
+└── engine: 'gemini' → PersistentGeminiSession
+    └── Wraps: gemini CLI (--output-format stream-json, per-message spawning)
 ```
 
 ## Supported Engines
@@ -47,6 +48,25 @@ await manager.startSession({
   name: 'codex-task',
   engine: 'codex',
   model: 'o4-mini',
+  cwd: '/project',
+});
+```
+
+### Google Gemini (`engine: 'gemini'`)
+
+Wraps the `gemini` CLI with `--output-format stream-json`. Each `send()` spawns a new process.
+
+- One-shot execution per message (no persistent subprocess)
+- Working directory carries accumulated changes across sends
+- Real token counts from stream-json `result` events (not estimated)
+- Permission modes: `bypassPermissions` → `--yolo`, `default` → `--sandbox`
+- Requires `gemini` CLI installed: `npm install -g @google/gemini-cli`
+
+```typescript
+await manager.startSession({
+  name: 'gemini-task',
+  engine: 'gemini',
+  model: 'gemini-pro',   // alias for gemini-2.5-pro
   cwd: '/project',
 });
 ```

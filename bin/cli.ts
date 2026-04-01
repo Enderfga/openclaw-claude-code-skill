@@ -77,9 +77,9 @@ program
 // Session commands
 program
   .command('session-start [name]')
-  .description('Start a persistent coding session (Claude Code or Codex)')
+  .description('Start a persistent coding session (Claude Code, Codex, or Gemini)')
   .option('-d, --cwd <dir>', 'Working directory')
-  .option('-e, --engine <engine>', 'Engine: claude (default) or codex')
+  .option('-e, --engine <engine>', 'Engine: claude (default), codex, or gemini')
   .option('-m, --model <model>', 'Model to use')
   .option('--permission-mode <mode>', 'Permission mode', 'acceptEdits')
   .option('--effort <level>', 'Effort level')

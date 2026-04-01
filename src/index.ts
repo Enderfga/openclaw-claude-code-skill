@@ -19,6 +19,7 @@ import type { PluginConfig, EffortLevel, CouncilConfig, AgentPersona } from './t
 export { SessionManager } from './session-manager.js';
 export { PersistentClaudeSession } from './persistent-session.js';
 export { PersistentCodexSession } from './persistent-codex-session.js';
+export { PersistentGeminiSession } from './persistent-gemini-session.js';
 export { Council, getDefaultCouncilConfig } from './council.js';
 export { parseConsensus, stripConsensusTags, hasConsensusMarker } from './consensus.js';
 export type { ISession } from './types.js';
@@ -119,13 +120,17 @@ const plugin = {
     api.registerTool({
       name: 'claude_session_start',
       description:
-        'Start a persistent coding session. Supports multiple engines: claude (default) for Claude Code CLI, codex for OpenAI Codex CLI.',
+        'Start a persistent coding session. Supports multiple engines: claude (default) for Claude Code CLI, codex for OpenAI Codex CLI, gemini for Google Gemini CLI.',
       parameters: {
         type: 'object',
         properties: {
           name: { type: 'string', description: 'Session name (auto-generated if omitted)' },
           cwd: { type: 'string', description: 'Working directory' },
-          engine: { type: 'string', enum: ['claude', 'codex'], description: 'Engine to use (default: claude)' },
+          engine: {
+            type: 'string',
+            enum: ['claude', 'codex', 'gemini'],
+            description: 'Engine to use (default: claude)',
+          },
           model: { type: 'string', description: 'Model to use (opus, sonnet, haiku, gemini-pro, o4-mini, etc.)' },
           permissionMode: {
             type: 'string',
@@ -444,7 +449,11 @@ const plugin = {
                 name: { type: 'string', description: 'Agent display name' },
                 emoji: { type: 'string', description: 'Agent emoji identifier' },
                 persona: { type: 'string', description: 'Agent personality/expertise description' },
-                engine: { type: 'string', enum: ['claude', 'codex'], description: 'Engine (default: claude)' },
+                engine: {
+                  type: 'string',
+                  enum: ['claude', 'codex', 'gemini'],
+                  description: 'Engine (default: claude)',
+                },
                 model: { type: 'string', description: 'Model to use' },
                 baseUrl: { type: 'string', description: 'Custom API endpoint (for proxy)' },
               },

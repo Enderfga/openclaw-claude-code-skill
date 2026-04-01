@@ -10,7 +10,7 @@ export type EffortLevel = 'low' | 'medium' | 'high' | 'max' | 'auto';
 
 // ─── Engine ─────────────────────────────────────────────────────────────────
 
-export type EngineType = 'claude' | 'codex';
+export type EngineType = 'claude' | 'codex' | 'gemini';
 
 // ─── Session Config ──────────────────────────────────────────────────────────
 

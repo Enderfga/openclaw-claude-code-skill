@@ -110,6 +110,7 @@ function makeDebounced(fn: () => void, ms: number): () => void {
 }
 
 import { PersistentClaudeSession } from './persistent-session.js';
+import { PersistentGeminiSession } from './persistent-gemini-session.js';
 import { PersistentCodexSession } from './persistent-codex-session.js';
 import {
   type SessionConfig,
@@ -763,6 +764,8 @@ export class SessionManager {
 
   private _createSession(engine: EngineType, config: SessionConfig): ISession {
     switch (engine) {
+      case 'gemini':
+        return new PersistentGeminiSession(config, process.env.GEMINI_BIN);
       case 'codex':
         return new PersistentCodexSession(config, process.env.CODEX_BIN);
       case 'claude':
