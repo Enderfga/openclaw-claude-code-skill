@@ -68,12 +68,26 @@
       "claude_session_send",
       "claude_session_stop",
       "claude_session_list",
+      "claude_sessions_overview",
       "claude_session_status",
       "claude_session_grep",
       "claude_session_compact",
       "claude_agents_list",
       "claude_team_list",
-      "claude_team_send"
+      "claude_team_send",
+      "claude_session_update_tools",
+      "claude_session_switch_model",
+      "council_start",
+      "council_status",
+      "council_abort",
+      "council_inject",
+      "claude_session_send_to",
+      "claude_session_inbox",
+      "claude_session_deliver_inbox",
+      "ultraplan_start",
+      "ultraplan_status",
+      "ultrareview_start",
+      "ultrareview_status"
     ]
   },
   "skills": ["skills/SKILL.md"]
