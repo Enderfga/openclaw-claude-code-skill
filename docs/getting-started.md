@@ -5,9 +5,11 @@
 ### As OpenClaw Plugin
 
 ```bash
-openclaw plugins install @enderfga/openclaw-claude-code
+openclaw plugins install @enderfga/openclaw-claude-code --dangerously-force-unsafe-install
 openclaw gateway restart
 ```
+
+> **Why `--dangerously-force-unsafe-install`?** This plugin spawns Claude Code / Codex CLI subprocesses via `child_process`, which OpenClaw's security scanner flags by design. The flag is required — there is no way to drive coding CLIs without process spawning.
 
 Agents automatically get access to all session, council, and management tools.
 

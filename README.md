@@ -15,10 +15,11 @@ This project wraps coding CLIs and exposes their capabilities as a clean, tool-b
 ## Quick Start
 
 ```bash
-# As OpenClaw plugin
-openclaw plugins install @enderfga/openclaw-claude-code
+# As OpenClaw plugin (--dangerously-force-unsafe-install is required
+# because this plugin spawns CLI subprocesses via child_process)
+openclaw plugins install @enderfga/openclaw-claude-code --dangerously-force-unsafe-install
 
-# Or standalone
+# Or standalone (no flag needed)
 npm install -g @enderfga/openclaw-claude-code
 claude-code-skill serve
 ```
