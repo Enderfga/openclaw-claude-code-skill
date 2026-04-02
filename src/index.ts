@@ -149,10 +149,10 @@ const plugin = {
           worktree: { type: ['string', 'boolean'], description: 'Run in git worktree' },
           fallbackModel: { type: 'string', description: 'Auto fallback when primary overloaded' },
           jsonSchema: { type: 'string', description: 'JSON Schema for structured output' },
-          mcpConfig: { type: ['string', 'array'], description: 'MCP server config file(s)' },
+          mcpConfig: { type: ['string', 'array'], items: { type: 'string' }, description: 'MCP server config file(s)' },
           settings: { type: 'string', description: 'Settings.json path or inline JSON' },
           noSessionPersistence: { type: 'boolean', description: 'Do not save session to disk' },
-          betas: { type: ['string', 'array'], description: 'Custom beta headers' },
+          betas: { type: ['string', 'array'], items: { type: 'string' }, description: 'Custom beta headers' },
           enableAgentTeams: { type: 'boolean', description: 'Enable experimental agent teams' },
           enableAutoMode: { type: 'boolean', description: 'Enable auto permission mode' },
           resumeSessionId: {
