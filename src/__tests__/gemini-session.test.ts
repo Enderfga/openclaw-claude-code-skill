@@ -22,15 +22,18 @@ const { PersistentGeminiSession } = await import('../persistent-gemini-session.j
 
 function createMockProcess() {
   const proc = new EventEmitter() as EventEmitter & {
-    stdout: Readable;
-    stderr: EventEmitter;
-    stdin: { end: () => void };
+    stdout: Readable & { destroy: ReturnType<typeof vi.fn> };
+    stderr: EventEmitter & { destroy: ReturnType<typeof vi.fn> };
+    stdin: { end: ReturnType<typeof vi.fn> };
     kill: ReturnType<typeof vi.fn>;
     pid: number;
     exitCode: null;
   };
   proc.stdout = new Readable({ read() {} });
-  proc.stderr = new EventEmitter();
+  (proc.stdout as Readable & { destroy: ReturnType<typeof vi.fn> }).destroy = vi.fn();
+  const stderrEmitter = new EventEmitter() as EventEmitter & { destroy: ReturnType<typeof vi.fn> };
+  stderrEmitter.destroy = vi.fn();
+  proc.stderr = stderrEmitter;
   proc.stdin = { end: vi.fn() };
   proc.kill = vi.fn();
   proc.pid = 12345;

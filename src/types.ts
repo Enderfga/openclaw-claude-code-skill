@@ -313,9 +313,14 @@ export const MODEL_PRICING: Record<string, ModelPricing> = { ...DEFAULT_MODEL_PR
 export function overrideModelPricing(overrides: Record<string, Partial<ModelPricing>>): void {
   for (const [model, pricing] of Object.entries(overrides)) {
     const existing = MODEL_PRICING[model];
+    const input = pricing.input ?? existing?.input;
+    const output = pricing.output ?? existing?.output;
+    if (input === undefined || output === undefined) {
+      console.warn(`[ModelPricing] Missing input/output pricing for new model '${model}', defaulting to 0`);
+    }
     MODEL_PRICING[model] = {
-      input: pricing.input ?? existing?.input ?? 0,
-      output: pricing.output ?? existing?.output ?? 0,
+      input: input ?? 0,
+      output: output ?? 0,
       cached: pricing.cached ?? existing?.cached,
     };
   }

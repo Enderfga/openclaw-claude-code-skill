@@ -896,8 +896,12 @@ export class SessionManager {
       let delivered = 0;
       for (const [name] of this.sessions) {
         if (name === from) continue;
-        const ok = await this._deliverOrQueue(name, inboxMsg);
-        if (ok) delivered++;
+        try {
+          const ok = await this._deliverOrQueue(name, inboxMsg);
+          if (ok) delivered++;
+        } catch (err) {
+          console.error(`[SessionManager] Broadcast delivery to '${name}' failed:`, (err as Error).message);
+        }
       }
       return { delivered: delivered > 0, queued: delivered === 0 };
     }

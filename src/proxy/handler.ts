@@ -23,6 +23,13 @@ import {
 import { injectThoughtSigs } from './thought-cache.js';
 import type { ProxyConfig } from '../types.js';
 
+const FETCH_TIMEOUT_MS = 120_000; // 2 minutes
+
+/** Create an AbortSignal that fires after the given timeout */
+function fetchSignal(ms = FETCH_TIMEOUT_MS): AbortSignal {
+  return AbortSignal.timeout(ms);
+}
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface ProxyEnv {
@@ -155,9 +162,10 @@ export function createProxyHandler(config: ProxyConfig | undefined, env: ProxyEn
       }
     } catch (err) {
       console.error('[proxy] Error:', (err as Error).message);
+      const message = (err as Error).name === 'TimeoutError' ? 'Upstream request timed out' : 'Internal proxy error';
       res.status(500).json({
         type: 'error',
-        error: { type: 'server_error', message: (err as Error).message },
+        error: { type: 'server_error', message },
       });
       return true;
     }
@@ -186,6 +194,7 @@ async function forwardToAnthropic(
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify(body),
+    signal: fetchSignal(),
   });
 
   if (isStream) {
@@ -237,11 +246,15 @@ async function forwardToGateway(
       'x-openclaw-agent-id': 'claude-code-raw',
     },
     body: JSON.stringify(openaiReq),
+    signal: fetchSignal(),
   });
 
   if (!resp.ok) {
     const err = await resp.text();
-    res.status(resp.status).json({ type: 'error', error: { type: 'gateway_error', message: err } });
+    console.error('[proxy] Gateway error:', resp.status, err);
+    res
+      .status(resp.status)
+      .json({ type: 'error', error: { type: 'gateway_error', message: 'Upstream gateway error' } });
     return true;
   }
 
@@ -289,11 +302,13 @@ async function handleNonStreamingResponse(
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify(Object.assign({}, openaiReq as object, { stream: false })),
+    signal: fetchSignal(),
   });
 
   if (!resp.ok) {
     const err = await resp.text();
-    res.status(resp.status).json({ type: 'error', error: { type: 'api_error', message: err } });
+    console.error('[proxy] API error:', resp.status, err);
+    res.status(resp.status).json({ type: 'error', error: { type: 'api_error', message: 'Upstream API error' } });
     return true;
   }
 
@@ -317,11 +332,13 @@ async function handleStreamingResponse(
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify(Object.assign({}, openaiReq as object, { stream: true })),
+    signal: fetchSignal(),
   });
 
   if (!resp.ok) {
     const err = await resp.text();
-    res.status(resp.status).json({ type: 'error', error: { type: 'api_error', message: err } });
+    console.error('[proxy] Streaming API error:', resp.status, err);
+    res.status(resp.status).json({ type: 'error', error: { type: 'api_error', message: 'Upstream API error' } });
     return true;
   }
 

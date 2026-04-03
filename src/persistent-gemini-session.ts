@@ -376,6 +376,9 @@ export class PersistentGeminiSession extends EventEmitter implements ISession {
 
   stop(): void {
     if (this.currentProc) {
+      this.currentProc.stdin?.end();
+      this.currentProc.stdout?.destroy();
+      this.currentProc.stderr?.destroy();
       try {
         this.currentProc.kill('SIGTERM');
       } catch {}

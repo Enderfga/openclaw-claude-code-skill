@@ -74,7 +74,7 @@ const session = manager.councilStart('Build a REST API with auth', {
 
 See [Council](./docs/council.md) for the full collaboration protocol.
 
-### 24 Tools
+### 27 Tools
 
 | Category | Tools |
 |----------|-------|

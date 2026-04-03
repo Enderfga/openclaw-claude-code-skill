@@ -56,6 +56,7 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
   private options: SessionConfig & { hooks?: HookConfig; modelOverrides?: Record<string, string> };
   private claudeBin: string;
   private proc: ChildProcess | null = null;
+  private _rl: readline.Interface | null = null;
   private _isReady = false;
   private _isPaused = false;
   private _isBusy = false;
@@ -239,8 +240,8 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
     this.proc.unref();
 
     // Parse stdout line-by-line
-    const rl = readline.createInterface({ input: this.proc.stdout!, crlfDelay: Infinity });
-    rl.on('line', (line) => {
+    this._rl = readline.createInterface({ input: this.proc.stdout!, crlfDelay: Infinity });
+    this._rl.on('line', (line) => {
       if (!line.trim()) return;
       try {
         const event = JSON.parse(line) as StreamEvent;
@@ -670,9 +671,15 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
 
   stop(): void {
     this._fireHook('onStop', { cost: this.getCost(), stats: this.getStats() });
+    if (this._rl) {
+      this._rl.close();
+      this._rl = null;
+    }
     if (this.proc) {
       const pid = this.proc.pid!;
       this.proc.stdin?.end();
+      this.proc.stdout?.destroy();
+      this.proc.stderr?.destroy();
       try {
         process.kill(-pid, 'SIGTERM');
       } catch {

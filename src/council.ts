@@ -160,14 +160,15 @@ async function setupWorktrees(projectDir: string, agents: AgentPersona[]): Promi
         if (dirty) {
           console.log(`[Council] WARNING: worktree ${wtDir} has uncommitted changes — discarding via hard reset`);
         }
-        await spawnAsync('git', ['-C', wtDir, 'checkout', branch], { timeout: 5000 }).catch((err) => {
-          console.error(`[Council] Failed to checkout branch ${branch} in ${wtDir}:`, err.message);
-        });
-        await spawnAsync('git', ['-C', wtDir, 'reset', '--hard', 'HEAD'], { timeout: 5000 }).catch((err) => {
-          console.error(`[Council] Failed to hard reset in ${wtDir}:`, err.message);
-        });
-        worktreeMap.set(agent.name, wtDir);
-        continue;
+        try {
+          await spawnAsync('git', ['-C', wtDir, 'checkout', branch], { timeout: 5000 });
+          await spawnAsync('git', ['-C', wtDir, 'reset', '--hard', 'HEAD'], { timeout: 5000 });
+          worktreeMap.set(agent.name, wtDir);
+          continue;
+        } catch (err) {
+          console.error(`[Council] Failed to reuse worktree ${wtDir} for branch ${branch}:`, (err as Error).message);
+          // Fall through to re-create the worktree below
+        }
       }
       await spawnAsync('git', ['-C', projectDir, 'worktree', 'remove', '--force', wtDir], { timeout: 5000 }).catch(
         (err) => {
@@ -179,7 +180,11 @@ async function setupWorktrees(projectDir: string, agents: AgentPersona[]): Promi
     await spawnAsync('git', ['-C', projectDir, 'branch', '-D', branch], { timeout: 5000 }).catch((err) => {
       console.error(`[Council] Failed to delete branch ${branch}:`, err.message);
     });
-    await spawnAsync('git', ['-C', projectDir, 'worktree', 'add', wtDir, '-b', branch], { timeout: 5000 });
+    try {
+      await spawnAsync('git', ['-C', projectDir, 'worktree', 'add', wtDir, '-b', branch], { timeout: 10000 });
+    } catch (err) {
+      throw new Error(`Failed to create worktree for ${agent.name} at ${wtDir}: ${(err as Error).message}`);
+    }
 
     if (!fs.existsSync(wtDir)) {
       throw new Error(`Worktree directory not created: ${wtDir}`);
@@ -520,6 +525,9 @@ export class Council extends EventEmitter {
       );
     }
 
+    if (this.config.agents.length === 0) {
+      throw new Error('Council requires at least one agent');
+    }
     console.log(`[Council] Starting: ${this.config.agents.length} agents, max ${this.config.maxRounds} rounds`);
     console.log(`[Council] Task: ${trimmedTask}`);
     console.log(`[Council] Dir: ${this.config.projectDir}`);

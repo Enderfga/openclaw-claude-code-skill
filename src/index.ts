@@ -9,10 +9,31 @@
  * consumes no memory beyond the tool schema definitions.
  */
 
+import * as path from 'node:path';
 import { SessionManager } from './session-manager.js';
 import { createProxyHandler } from './proxy/handler.js';
 import { EmbeddedServer } from './embedded-server.js';
 import type { PluginConfig, EffortLevel, CouncilConfig, AgentPersona } from './types.js';
+
+/** Resolve and validate a working directory path — prevents path traversal */
+function sanitizeCwd(cwd: string | undefined): string | undefined {
+  if (!cwd) return undefined;
+  const resolved = path.resolve(cwd);
+  // Block obvious traversal attempts and system-critical paths
+  if (resolved === '/' || resolved.startsWith('/etc') || resolved.startsWith('/proc') || resolved.startsWith('/sys')) {
+    throw new Error(`Unsafe working directory: ${resolved}`);
+  }
+  return resolved;
+}
+
+/** Validate a regex pattern — prevents ReDoS from malformed input */
+function validateRegex(pattern: string): RegExp {
+  try {
+    return new RegExp(pattern, 'i');
+  } catch (err) {
+    throw new Error(`Invalid regex pattern: ${(err as Error).message}`);
+  }
+}
 
 // ─── Standalone Export ───────────────────────────────────────────────────────
 
@@ -163,7 +184,9 @@ const plugin = {
         },
       },
       execute: async (_id, args) => {
-        const info = await getManager().startSession(args as Parameters<SessionManager['startSession']>[0]);
+        const sanitized = { ...args };
+        if (sanitized.cwd) sanitized.cwd = sanitizeCwd(sanitized.cwd as string);
+        const info = await getManager().startSession(sanitized as Parameters<SessionManager['startSession']>[0]);
         return { ok: true, ...info };
       },
     });
@@ -286,6 +309,7 @@ const plugin = {
         required: ['name', 'pattern'],
       },
       execute: async (_id, args) => {
+        validateRegex(args.pattern as string);
         const matches = await getManager().grepSession(
           args.name as string,
           args.pattern as string,
@@ -324,7 +348,7 @@ const plugin = {
         properties: { cwd: { type: 'string', description: 'Project directory' } },
       },
       execute: async (_id, args) => {
-        const agents = getManager().listAgents(args.cwd as string | undefined);
+        const agents = getManager().listAgents(sanitizeCwd(args.cwd as string | undefined));
         return { ok: true, agents };
       },
     });
@@ -469,13 +493,13 @@ const plugin = {
       },
       execute: async (_id, args) => {
         const { getDefaultCouncilConfig } = await import('./council.js');
-        const projectDir = args.projectDir as string;
+        const projectDir = sanitizeCwd(args.projectDir as string)!;
         const defaultConfig = getDefaultCouncilConfig(projectDir);
 
         const config: CouncilConfig = {
           name: 'council',
           agents: (args.agents as AgentPersona[] | undefined) || defaultConfig.agents,
-          maxRounds: (args.maxRounds as number | undefined) || defaultConfig.maxRounds,
+          maxRounds: (args.maxRounds as number | undefined) ?? defaultConfig.maxRounds,
           projectDir,
           agentTimeoutMs: args.agentTimeoutMs as number | undefined,
           maxTurnsPerAgent: args.maxTurnsPerAgent as number | undefined,
@@ -681,7 +705,7 @@ const plugin = {
       },
       execute: async (_id, args) => {
         const result = getManager().ultraplanStart(args.task as string, {
-          cwd: args.cwd as string | undefined,
+          cwd: sanitizeCwd(args.cwd as string | undefined),
           model: args.model as string | undefined,
           timeout: args.timeout as number | undefined,
         });
@@ -724,7 +748,7 @@ const plugin = {
         required: ['cwd'],
       },
       execute: async (_id, args) => {
-        const result = getManager().ultrareviewStart(args.cwd as string, {
+        const result = getManager().ultrareviewStart(sanitizeCwd(args.cwd as string)!, {
           agentCount: args.agentCount as number | undefined,
           maxDurationMinutes: args.maxDurationMinutes as number | undefined,
           model: args.model as string | undefined,

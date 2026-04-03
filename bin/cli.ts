@@ -107,11 +107,32 @@ program
     if (opts.permissionMode) body.permissionMode = opts.permissionMode;
     if (opts.effort) body.effort = opts.effort;
     if (opts.allowedTools) body.allowedTools = opts.allowedTools.split(',');
-    if (opts.maxTurns) body.maxTurns = parseInt(opts.maxTurns);
-    if (opts.maxBudget) body.maxBudgetUsd = parseFloat(opts.maxBudget);
+    if (opts.maxTurns) {
+      const v = parseInt(opts.maxTurns);
+      if (isNaN(v) || v <= 0) {
+        console.error('--max-turns must be a positive integer');
+        process.exit(1);
+      }
+      body.maxTurns = v;
+    }
+    if (opts.maxBudget) {
+      const v = parseFloat(opts.maxBudget);
+      if (isNaN(v) || v <= 0) {
+        console.error('--max-budget must be a positive number');
+        process.exit(1);
+      }
+      body.maxBudgetUsd = v;
+    }
     if (opts.systemPrompt) body.systemPrompt = opts.systemPrompt;
     if (opts.appendSystemPrompt) body.appendSystemPrompt = opts.appendSystemPrompt;
-    if (opts.agents) body.agents = JSON.parse(opts.agents);
+    if (opts.agents) {
+      try {
+        body.agents = JSON.parse(opts.agents);
+      } catch (e) {
+        console.error(`Invalid JSON in --agents: ${(e as Error).message}`);
+        process.exit(1);
+      }
+    }
     if (opts.agent) body.agent = opts.agent;
     if (opts.bare) body.bare = true;
     if (opts.worktree !== undefined) body.worktree = typeof opts.worktree === 'string' ? opts.worktree : true;

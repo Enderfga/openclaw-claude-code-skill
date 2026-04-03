@@ -37,10 +37,10 @@ claude-code-skill session-start myproject -d ~/project \
   --allowed-tools "Bash,Read,Edit,Write,Glob,Grep"
 
 # Send a plan (Claude will execute precisely)
-claude-code-skill session-send myproject --stream '<精确的执行计划>'
+claude-code-skill session-send myproject --stream 'Refactor the auth module to use JWT'
 
-# Send with high effort (ultrathink) for complex reasoning
-claude-code-skill session-send myproject --stream --ultrathink 'Refactor the auth module'
+# Send with high effort for complex reasoning
+claude-code-skill session-send myproject --stream --effort high 'Refactor the auth module'
 
 # Enter plan mode — Claude creates a plan first, then executes
 claude-code-skill session-send myproject --stream --plan 'Implement rate limiting'
@@ -51,9 +51,9 @@ claude-code-skill session-status myproject
 # Compact session when context gets large
 claude-code-skill session-compact myproject
 
-# Start with auto mode — classifier approves safe actions automatically
+# Start with auto permission mode
 claude-code-skill session-start myproject -d ~/project \
-  --permission-mode auto --enable-auto-mode \
+  --permission-mode auto \
   --allowed-tools "Bash,Read,Edit,Write,Glob,Grep"
 ```
 
@@ -128,7 +128,7 @@ claude-code-skill session-start advanced -d ~/project \
 
 # Auto mode — safer than bypassPermissions, fewer prompts than acceptEdits
 claude-code-skill session-start autonomous -d ~/project \
-  --permission-mode auto --enable-auto-mode \
+  --permission-mode auto \
   --allowed-tools "Bash,Read,Edit,Write,Glob,Grep" \
   --max-budget 3.00
 
@@ -142,7 +142,7 @@ claude-code-skill session-start review -d ~/project \
 | Mode | Description |
 |------|-------------|
 | `acceptEdits` | Auto-accept file edits (default) |
-| `auto` | Classifier-based safety checks, auto-approve safe actions (requires `--enable-auto-mode`) |
+| `auto` | Classifier-based safety checks, auto-approve safe actions |
 | `plan` | Preview changes before applying |
 | `default` | Ask for each operation |
 | `bypassPermissions` | Skip all prompts (dangerous!) |
@@ -163,16 +163,13 @@ claude-code-skill session-send myproject "Run all tests" -t 300000
 
 # With effort control
 claude-code-skill session-send myproject "Quick lint fix" --effort low
-claude-code-skill session-send myproject "Design new auth system" --ultrathink
+claude-code-skill session-send myproject "Design new auth system" --effort high
 
 # Plan mode — Claude creates a plan, then executes
 claude-code-skill session-send myproject --plan "Add rate limiting to all API endpoints"
 
-# Auto-resume stopped sessions
-claude-code-skill session-send myproject "Continue the migration" --auto-resume
-
-# NDJSON output for programmatic consumption
-claude-code-skill session-send myproject "Run tests" --stream --ndjson
+# Continue working on a task
+claude-code-skill session-send myproject "Continue the migration"
 ```
 
 #### Managing Sessions
@@ -203,66 +200,6 @@ claude-code-skill session-start myproject -d ~/project \
   --model-overrides '{"fast":"gemini-2.0-flash","smart":"claude-opus-4-6"}'
 ```
 
-#### Cost Tracking
-
-```bash
-# Show cost breakdown for a session
-claude-code-skill session-cost myproject
-# → Model: claude-opus-4-6
-# → Tokens in: 12,345 | out: 3,456 | cached: 8,901
-# → Breakdown: Input $0.0103 | Cached $0.0033 | Output $0.0518
-# → 💰 Total: $0.0654
-```
-
-#### Branching
-
-```bash
-# Branch a session (fork + optional model/effort change)
-claude-code-skill session-branch myproject experiment
-claude-code-skill session-branch myproject fast-branch --model sonnet --effort low
-
-# Branch preserves full conversation history from parent
-# Both parent and branch continue independently
-```
-
-#### Hooks (Webhook Callbacks)
-
-```bash
-# List available hooks
-claude-code-skill session-hooks myproject
-
-# Register webhook URLs for events
-claude-code-skill session-hooks myproject \
-  --on-tool-error http://localhost:8080/webhook \
-  --on-context-high http://localhost:8080/webhook \
-  --on-stop http://localhost:8080/webhook
-
-# Available hooks:
-# onToolError    — a tool call failed
-# onContextHigh  — context usage exceeded 70%
-# onStop         — session stopped (includes cost summary)
-# onTurnComplete — each turn finished (includes usage)
-# onStopFailure  — API error (rate limit, auth failure)
-```
-
-#### Config Files
-
-```bash
-# Load session config from JSON file
-claude-code-skill session-start myproject --config agent.json
-
-# agent.json example:
-# {
-#   "cwd": "~/project",
-#   "permissionMode": "acceptEdits",
-#   "allowedTools": ["Bash", "Read", "Edit", "Write"],
-#   "effort": "high",
-#   "maxBudget": "5.00",
-#   "modelOverrides": { "fast": "gemini-2.0-flash" },
-#   "appendSystemPrompt": "Always write tests"
-# }
-```
-
 #### Context Management
 
 ```bash
@@ -276,31 +213,34 @@ claude-code-skill session-compact myproject --summary "Finished auth refactor, n
 claude-code-skill session-status myproject
 ```
 
-### Session History & Search
+### Agents, Skills & Rules Management
 
 ```bash
-# Browse all Claude Code sessions
-claude-code-skill sessions -n 20
+# List agents
+claude-code-skill agents-list -d ~/project
 
-# Search sessions by project
-claude-code-skill session-search --project ~/myapp
+# Create an agent
+claude-code-skill agents-create my-reviewer -d ~/project \
+  --description "Code reviewer" \
+  --prompt "You are a thorough code reviewer."
 
-# Search by time
-claude-code-skill session-search --since "2h"
-claude-code-skill session-search --since "2024-02-01"
+# List skills
+claude-code-skill skills-list -d ~/project
 
-# Search by query
-claude-code-skill session-search "bug fix"
+# Create a skill
+claude-code-skill skills-create my-skill -d ~/project \
+  --description "Custom skill" \
+  --prompt "You handle X" \
+  --trigger "when X"
 
-# Resume a historical session
-claude-code-skill resume <session-id> "Continue where we left off" -d ~/project
-```
+# List rules
+claude-code-skill rules-list -d ~/project
 
-### Batch Operations
-
-```bash
-# Read multiple files at once
-claude-code-skill batch-read "src/**/*.ts" "tests/**/*.test.ts" -p ~/project
+# Create a rule
+claude-code-skill rules-create my-rule -d ~/project \
+  --description "Enforce Y" \
+  --content "Always do Y" \
+  --paths "src/**/*.ts"
 ```
 
 ## 🤝 Agent Team Features
@@ -387,19 +327,6 @@ claude-code-skill session-start fullstack -d ~/project \
 
 # Append to existing prompt
 --append-system-prompt "Always run tests after changes."
-```
-
-### Session Management
-
-```bash
-# Resume with fork (create a branch)
---resume <session-id> --fork-session
-
-# Use custom UUID for session
---session-id "550e8400-e29b-41d4-a716-446655440000"
-
-# Add additional working directories
---add-dir "/var/log,/tmp/workspace"
 ```
 
 ### Multi-Model Support (Proxy)
