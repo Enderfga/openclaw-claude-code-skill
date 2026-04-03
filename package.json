@@ -59,8 +59,7 @@
   },
   "license": "MIT",
   "dependencies": {
-    "commander": "^12.1.0",
-    "uuid": "^10.0.0"
+    "commander": "^12.1.0"
   },
   "peerDependencies": {
     "openclaw": ">=2026.3.0"
