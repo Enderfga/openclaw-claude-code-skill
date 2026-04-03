@@ -30,46 +30,56 @@ const BLOCKED_HOME_SUBDIRS = ['.ssh', '.gnupg', '.aws', '.config/gcloud'];
 export function sanitizeCwd(cwd: string | undefined): string | undefined {
   if (!cwd) return undefined;
 
-  // Resolve symlinks when the path exists; fall back to path.resolve for
-  // paths that don't exist yet (e.g. a new project directory).
-  let resolved: string;
+  // Logical path: resolves .. and . but does NOT follow symlinks.
+  // This catches the obvious cases (/etc, /var/run, /sbin) on all platforms.
+  const logical = path.resolve(cwd);
+
+  // Real path: follows symlinks. This catches symlink-based bypasses
+  // (e.g. /tmp/safe → /etc). Falls back to logical for non-existent paths.
+  let real: string;
   try {
-    resolved = fs.realpathSync(cwd);
+    real = fs.realpathSync(cwd);
   } catch {
-    resolved = path.resolve(cwd);
+    real = logical;
+  }
+
+  // Collect all paths to check — logical, real, and their de-prefixed
+  // variants for macOS where /etc → /private/etc, /var → /private/var.
+  const pathsToCheck = new Set([logical, real]);
+  for (const p of [logical, real]) {
+    if (p.startsWith('/private/')) {
+      pathsToCheck.add(p.slice('/private'.length));
+    }
   }
 
   // Block filesystem root
-  if (resolved === '/') {
-    throw new Error(`Unsafe working directory: ${resolved}`);
-  }
-
-  // Check both the resolved path and the logical path (without /private/ prefix
-  // on macOS where /etc → /private/etc, /var → /private/var, etc.)
-  const pathsToCheck = [resolved];
-  if (resolved.startsWith('/private/')) {
-    pathsToCheck.push(resolved.slice('/private'.length));
+  for (const check of pathsToCheck) {
+    if (check === '/') {
+      throw new Error(`Unsafe working directory: ${logical}`);
+    }
   }
 
   // Block system-critical prefixes
   for (const check of pathsToCheck) {
     for (const prefix of BLOCKED_PREFIXES) {
       if (check === prefix || check.startsWith(prefix + '/')) {
-        throw new Error(`Unsafe working directory: ${resolved}`);
+        throw new Error(`Unsafe working directory: ${logical}`);
       }
     }
   }
 
   // Block sensitive home subdirectories
   const home = os.homedir();
-  for (const subdir of BLOCKED_HOME_SUBDIRS) {
-    const sensitive = path.join(home, subdir);
-    if (resolved === sensitive || resolved.startsWith(sensitive + '/')) {
-      throw new Error(`Unsafe working directory: ${resolved}`);
+  for (const check of pathsToCheck) {
+    for (const subdir of BLOCKED_HOME_SUBDIRS) {
+      const sensitive = path.join(home, subdir);
+      if (check === sensitive || check.startsWith(sensitive + '/')) {
+        throw new Error(`Unsafe working directory: ${logical}`);
+      }
     }
   }
 
-  return resolved;
+  return real;
 }
 
 // ─── validateRegex ──────────────────────────────────────────────────────────
