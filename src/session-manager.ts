@@ -845,7 +845,9 @@ export class SessionManager {
     return new Promise((resolve) => {
       const server = http.createServer((req, res) => {
         let body = '';
-        req.on('data', (chunk: Buffer) => { body += chunk.toString(); });
+        req.on('data', (chunk: Buffer) => {
+          body += chunk.toString();
+        });
         req.on('end', () => {
           const httpReq = {
             method: req.method || 'GET',
@@ -854,8 +856,14 @@ export class SessionManager {
             json: async () => JSON.parse(body),
           };
           const httpRes = {
-            status: (code: number) => { res.statusCode = code; return httpRes; },
-            json: (data: unknown) => { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(data)); },
+            status: (code: number) => {
+              res.statusCode = code;
+              return httpRes;
+            },
+            json: (data: unknown) => {
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify(data));
+            },
             setHeader: (k: string, v: string) => res.setHeader(k, v),
             write: (data: string) => res.write(data),
             end: () => res.end(),
