@@ -223,6 +223,7 @@ export interface CostBreakdown {
 export interface ISession {
   // ── Identity ────────────────────────────────────────────────────────────
   sessionId?: string;
+  readonly pid?: number;
 
   // ── State ───────────────────────────────────────────────────────────────
   readonly isReady: boolean;
@@ -425,6 +426,7 @@ export interface CouncilConfig {
   agentTimeoutMs?: number;
   maxTurnsPerAgent?: number;
   maxBudgetUsd?: number;
+  defaultPermissionMode?: PermissionMode;
 }
 
 export interface AgentResponse {

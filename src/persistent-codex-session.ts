@@ -27,6 +27,8 @@ import {
   getModelPricing as _getModelPricingBase,
 } from './types.js';
 
+import { MAX_HISTORY_ITEMS, DEFAULT_HISTORY_LIMIT } from './constants.js';
+
 function getModelPricing(model?: string) {
   return _getModelPricingBase(model, 'o4-mini');
 }
@@ -63,6 +65,10 @@ export class PersistentCodexSession extends EventEmitter implements ISession {
       ...config,
       permissionMode: config.permissionMode || 'bypassPermissions',
     };
+  }
+
+  get pid(): number | undefined {
+    return this.currentProc?.pid ?? undefined;
   }
 
   get isReady(): boolean {
@@ -190,7 +196,7 @@ export class PersistentCodexSession extends EventEmitter implements ISession {
         this._updateCost();
 
         this._history.push({ time: now, type: 'result', event: { text: stdout, code } });
-        if (this._history.length > 100) this._history.shift();
+        if (this._history.length > MAX_HISTORY_ITEMS) this._history.shift();
 
         const event: StreamEvent = {
           type: 'result',
@@ -240,7 +246,7 @@ export class PersistentCodexSession extends EventEmitter implements ISession {
     };
   }
 
-  getHistory(limit = 50): Array<{ time: string; type: string; event: unknown }> {
+  getHistory(limit = DEFAULT_HISTORY_LIMIT): Array<{ time: string; type: string; event: unknown }> {
     return this._history.slice(-limit);
   }
 

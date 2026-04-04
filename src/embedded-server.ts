@@ -8,24 +8,63 @@
  */
 
 import * as http from 'node:http';
+import * as crypto from 'node:crypto';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import * as os from 'node:os';
 import { SessionManager } from './session-manager.js';
 import { sanitizeCwd, validateRegex } from './validation.js';
 import type { EffortLevel } from './types.js';
 
-const DEFAULT_PORT = 18796;
-const MAX_BODY_SIZE = 1_048_576; // 1 MB
+import { DEFAULT_SERVER_PORT, MAX_BODY_SIZE, RATE_LIMIT_MAX_REQUESTS, RATE_LIMIT_WINDOW_MS } from './constants.js';
 
 export class EmbeddedServer {
   private server: http.Server | null = null;
   private manager: SessionManager;
   private port: number;
+  private authToken: string | null = null;
+  private _rateWindows = new Map<string, number[]>();
+  private _rateLimitCleanupTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(manager: SessionManager, port?: number) {
     this.manager = manager;
-    this.port = port || DEFAULT_PORT;
+    this.port = port || DEFAULT_SERVER_PORT;
+  }
+
+  private _checkRateLimit(ip: string): boolean {
+    const now = Date.now();
+    const window = this._rateWindows.get(ip) || [];
+    const recent = window.filter((t) => now - t < RATE_LIMIT_WINDOW_MS);
+    recent.push(now);
+    this._rateWindows.set(ip, recent);
+    return recent.length <= RATE_LIMIT_MAX_REQUESTS;
   }
 
   async start(): Promise<number> {
+    // Auth token: use env var if set, otherwise generate random
+    if (process.env.OPENCLAW_SERVER_NO_AUTH === '1') {
+      this.authToken = null; // auth disabled
+    } else {
+      this.authToken = process.env.OPENCLAW_SERVER_TOKEN || crypto.randomBytes(32).toString('hex');
+      // Write token to file for CLI to read
+      const tokenDir = path.join(os.homedir(), '.openclaw');
+      try {
+        if (!fs.existsSync(tokenDir)) fs.mkdirSync(tokenDir, { recursive: true });
+        fs.writeFileSync(path.join(tokenDir, 'server-token'), this.authToken, { mode: 0o600 });
+      } catch {
+        /* best effort */
+      }
+    }
+
+    this._rateLimitCleanupTimer = setInterval(() => {
+      const now = Date.now();
+      for (const [ip, timestamps] of this._rateWindows) {
+        const recent = timestamps.filter((t) => now - t < RATE_LIMIT_WINDOW_MS);
+        if (recent.length === 0) this._rateWindows.delete(ip);
+        else this._rateWindows.set(ip, recent);
+      }
+    }, RATE_LIMIT_WINDOW_MS);
+
     return new Promise((resolve, reject) => {
       this.server = http.createServer((req, res) => this.handleRequest(req, res));
 
@@ -41,13 +80,24 @@ export class EmbeddedServer {
       });
 
       this.server.listen(this.port, '127.0.0.1', () => {
-        console.log(`[embedded-server] Listening on http://127.0.0.1:${this.port}`);
+        console.log(
+          `[embedded-server] Listening on http://127.0.0.1:${this.port}${this.authToken ? ' (auth enabled)' : ''}`,
+        );
         resolve(this.port);
       });
     });
   }
 
   async stop(): Promise<void> {
+    if (this._rateLimitCleanupTimer) {
+      clearInterval(this._rateLimitCleanupTimer);
+      this._rateLimitCleanupTimer = null;
+    }
+    try {
+      fs.unlinkSync(path.join(os.homedir(), '.openclaw', 'server-token'));
+    } catch {
+      /* ignore */
+    }
     if (!this.server) return;
     return new Promise((resolve) => {
       this.server!.close(() => resolve());
@@ -62,7 +112,7 @@ export class EmbeddedServer {
       res.setHeader('Access-Control-Allow-Origin', origin);
     }
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
     if (req.method === 'OPTIONS') {
       res.writeHead(200);
       res.end();
@@ -71,6 +121,24 @@ export class EmbeddedServer {
 
     const url = new URL(req.url || '/', `http://localhost:${this.port}`);
     const path = url.pathname;
+
+    // Bearer token auth (skip for health checks)
+    if (this.authToken && path !== '/health') {
+      const authHeader = req.headers.authorization || '';
+      if (authHeader !== `Bearer ${this.authToken}`) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: 'Unauthorized — provide Authorization: Bearer <token>' }));
+        return;
+      }
+    }
+
+    // Rate limiting
+    const clientIp = req.socket.remoteAddress || 'unknown';
+    if (!this._checkRateLimit(clientIp)) {
+      res.writeHead(429, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: 'Rate limit exceeded' }));
+      return;
+    }
 
     // Read body for POST — require JSON content type (CSRF mitigation)
     if (req.method === 'POST') {

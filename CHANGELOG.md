@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.1] - 2026-04-04
+
+### Added
+- **Embedded server authentication** — bearer token defense-in-depth; auto-generated on startup, written to `~/.openclaw/server-token`, bypass via `OPENCLAW_SERVER_NO_AUTH=1`. `/health` exempt
+- **Orphaned process cleanup** — PID file tracking (`~/.openclaw/session-pids.json`) with startup cleanup of stale Claude CLI processes
+- **Circuit breaker** — engine-level failure tracking with exponential backoff prevents cascading failures from broken CLIs
+- **Rate limiting** — sliding-window rate limiter (100 req/min per IP) on embedded server
+- **Council `defaultPermissionMode`** — new `CouncilConfig` option to override the `bypassPermissions` default for council agents
+- **Shared constants module** — `src/constants.ts` consolidates 30+ magic numbers (timeouts, limits, thresholds) from across the codebase
+
+### Changed
+- **Council cleanup consolidation** — extracted `_cleanup()` method from `accept()` for reusable worktree/branch/file cleanup
+- **Strongly typed event names** — `SESSION_EVENT` constant object replaces magic strings in event emission
+- **Type cast fix** — eliminated `as unknown as` double cast in proxy handler registration
+
 ## [2.7.0] - 2026-04-04
 
 ### Added

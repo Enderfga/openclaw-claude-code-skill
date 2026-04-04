@@ -26,6 +26,18 @@ import {
   getModelPricing,
 } from './types.js';
 
+import {
+  CONTEXT_HIGH_THRESHOLD,
+  CONTEXT_WINDOW_SIZE,
+  MAX_HISTORY_ITEMS,
+  DEFAULT_HISTORY_LIMIT,
+  SESSION_READY_TIMEOUT_MS,
+  SESSION_READY_FALLBACK_MS,
+  TURN_TIMEOUT_MS,
+  COMPACT_TIMEOUT_MS,
+  STOP_SIGKILL_DELAY_MS,
+} from './constants.js';
+
 // ─── Internal Stats ──────────────────────────────────────────────────────────
 
 interface InternalStats {
@@ -80,6 +92,10 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
       lastActivity: null,
       history: [],
     };
+  }
+
+  get pid(): number | undefined {
+    return this.proc?.pid ?? undefined;
   }
 
   get isReady(): boolean {
@@ -264,7 +280,10 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
 
     // Wait for ready
     return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error('Timeout waiting for session ready')), 30_000);
+      const timeout = setTimeout(
+        () => reject(new Error('Timeout waiting for session ready')),
+        SESSION_READY_TIMEOUT_MS,
+      );
 
       this.once('ready', () => {
         clearTimeout(timeout);
@@ -309,7 +328,7 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
           this.removeListener('close', onCloseBeforeReady);
           this.emit('ready');
         }
-      }, 2000);
+      }, SESSION_READY_FALLBACK_MS);
     });
   }
 
@@ -321,7 +340,7 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
 
     // Track history (keep last 100)
     this.stats.history.push({ time: this.stats.lastActivity, type, event });
-    if (this.stats.history.length > 100) this.stats.history.shift();
+    if (this.stats.history.length > MAX_HISTORY_ITEMS) this.stats.history.shift();
 
     switch (type) {
       case 'system':
@@ -438,9 +457,9 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
         });
 
         const totalTokens = this.stats.tokensIn + this.stats.tokensOut;
-        if (totalTokens > 140_000 && !this._contextHighFired) {
+        if (totalTokens > CONTEXT_HIGH_THRESHOLD && !this._contextHighFired) {
           this._contextHighFired = true;
-          this._fireHook('onContextHigh', { tokensUsed: totalTokens, threshold: 140_000 });
+          this._fireHook('onContextHigh', { tokensUsed: totalTokens, threshold: CONTEXT_HIGH_THRESHOLD });
         }
         const stopReason = (event as Record<string, unknown>).stop_reason;
         if (stopReason === 'error' || stopReason === 'rate_limit') {
@@ -489,7 +508,7 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
     if (options.waitForComplete) {
       this._isBusy = true;
       try {
-        return await this._waitForTurnComplete(options.timeout || 300_000);
+        return await this._waitForTurnComplete(options.timeout || TURN_TIMEOUT_MS);
       } finally {
         this._isBusy = false;
         if (options.callbacks) this._streamCallbacks = null;
@@ -605,19 +624,22 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
       // Claude Code doesn't expose exact context usage via the JSON protocol,
       // so this is a best-effort heuristic. May overcount because cumulative
       // token counts include the full conversation history replayed each turn.
-      contextPercent: Math.min(100, Math.round(((this.stats.tokensIn + this.stats.tokensOut) / 200_000) * 100)),
+      contextPercent: Math.min(
+        100,
+        Math.round(((this.stats.tokensIn + this.stats.tokensOut) / CONTEXT_WINDOW_SIZE) * 100),
+      ),
       sessionId: this.sessionId,
       uptime: this.stats.startTime ? Math.round((Date.now() - new Date(this.stats.startTime).getTime()) / 1000) : 0,
     };
   }
 
-  getHistory(limit = 50): Array<{ time: string; type: string; event: unknown }> {
+  getHistory(limit = DEFAULT_HISTORY_LIMIT): Array<{ time: string; type: string; event: unknown }> {
     return this.stats.history.slice(-limit);
   }
 
   async compact(summary?: string): Promise<TurnResult | { requestId: number; sent: boolean }> {
     const msg = summary ? `/compact ${summary}` : '/compact';
-    return this.send(msg, { waitForComplete: true, timeout: 60_000 });
+    return this.send(msg, { waitForComplete: true, timeout: COMPACT_TIMEOUT_MS });
   }
 
   getEffort(): EffortLevel {
@@ -686,7 +708,7 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
         try {
           p.kill('SIGKILL');
         } catch {}
-      }, 3000);
+      }, STOP_SIGKILL_DELAY_MS);
       this.proc = null;
     }
     this._isReady = false;

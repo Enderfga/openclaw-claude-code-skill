@@ -46,7 +46,7 @@ interface PluginAPI {
     path: string;
     auth?: string;
     match?: string;
-    handler: (req: unknown, res: unknown) => Promise<boolean>;
+    handler: (...args: unknown[]) => Promise<boolean>;
   }): void;
   registerService(def: { id: string; start: () => void; stop: () => void }): void;
 }
@@ -114,7 +114,7 @@ const plugin = {
         path: '/v1/claude-code-proxy',
         auth: 'gateway',
         match: 'prefix',
-        handler: proxyHandler as unknown as (req: unknown, res: unknown) => Promise<boolean>,
+        handler: proxyHandler as (...args: unknown[]) => Promise<boolean>,
       });
     }
 
@@ -470,6 +470,11 @@ const plugin = {
           agentTimeoutMs: { type: 'number', description: 'Per-agent timeout in ms (default 1800000)' },
           maxTurnsPerAgent: { type: 'number', description: 'Max tool turns per agent per round (default 30)' },
           maxBudgetUsd: { type: 'number', description: 'Max API spend per agent (USD)' },
+          defaultPermissionMode: {
+            type: 'string',
+            enum: ['acceptEdits', 'bypassPermissions', 'default', 'delegate', 'dontAsk', 'plan', 'auto'],
+            description: 'Default permission mode for council agents (default: bypassPermissions)',
+          },
         },
         required: ['task', 'projectDir'],
       },
@@ -486,6 +491,7 @@ const plugin = {
           agentTimeoutMs: args.agentTimeoutMs as number | undefined,
           maxTurnsPerAgent: args.maxTurnsPerAgent as number | undefined,
           maxBudgetUsd: args.maxBudgetUsd as number | undefined,
+          defaultPermissionMode: args.defaultPermissionMode as CouncilConfig['defaultPermissionMode'],
         };
 
         const session = getManager().councilStart(args.task as string, config);

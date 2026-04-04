@@ -30,6 +30,8 @@ import {
   getModelPricing as _getModelPricingBase,
 } from './types.js';
 
+import { MAX_HISTORY_ITEMS, DEFAULT_HISTORY_LIMIT } from './constants.js';
+
 function getModelPricing(model?: string) {
   return _getModelPricingBase(model, 'gemini-2.5-pro');
 }
@@ -67,6 +69,10 @@ export class PersistentGeminiSession extends EventEmitter implements ISession {
       ...config,
       permissionMode: config.permissionMode || 'bypassPermissions',
     };
+  }
+
+  get pid(): number | undefined {
+    return this.currentProc?.pid ?? undefined;
   }
 
   get isReady(): boolean {
@@ -210,7 +216,7 @@ export class PersistentGeminiSession extends EventEmitter implements ISession {
         }
 
         this._history.push({ time: now, type: 'result', event: { text: resultText.value, code } });
-        if (this._history.length > 100) this._history.shift();
+        if (this._history.length > MAX_HISTORY_ITEMS) this._history.shift();
 
         // Gemini exit codes: 0=success, 53=turn limit, 1=error, 42=input error
         let stopReason = 'end_turn';
@@ -332,7 +338,7 @@ export class PersistentGeminiSession extends EventEmitter implements ISession {
     };
   }
 
-  getHistory(limit = 50): Array<{ time: string; type: string; event: unknown }> {
+  getHistory(limit = DEFAULT_HISTORY_LIMIT): Array<{ time: string; type: string; event: unknown }> {
     return this._history.slice(-limit);
   }
 
