@@ -8,7 +8,6 @@
  */
 
 import * as http from 'node:http';
-import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
@@ -41,11 +40,12 @@ export class EmbeddedServer {
   }
 
   async start(): Promise<number> {
-    // Auth token: use env var if set, otherwise generate random
-    if (process.env.OPENCLAW_SERVER_NO_AUTH === '1') {
-      this.authToken = null; // auth disabled
-    } else {
-      this.authToken = process.env.OPENCLAW_SERVER_TOKEN || crypto.randomBytes(32).toString('hex');
+    // Auth token: opt-in via OPENCLAW_SERVER_TOKEN env var.
+    // When set, all requests (except /health) must include Authorization: Bearer <token>.
+    // Default: no auth (localhost-only is the primary security boundary).
+    const envToken = process.env.OPENCLAW_SERVER_TOKEN;
+    if (envToken) {
+      this.authToken = envToken;
       // Write token to file for CLI to read
       const tokenDir = path.join(os.homedir(), '.openclaw');
       try {
@@ -54,6 +54,8 @@ export class EmbeddedServer {
       } catch {
         /* best effort */
       }
+    } else {
+      this.authToken = null;
     }
 
     this._rateLimitCleanupTimer = setInterval(() => {

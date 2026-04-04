@@ -8,8 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.7.1] - 2026-04-04
 
 ### Added
-- **Embedded server authentication** — bearer token defense-in-depth; auto-generated on startup, written to `~/.openclaw/server-token`, bypass via `OPENCLAW_SERVER_NO_AUTH=1`. `/health` exempt
-- **Orphaned process cleanup** — PID file tracking (`~/.openclaw/session-pids.json`) with startup cleanup of stale Claude CLI processes
+- **Embedded server authentication** — opt-in bearer token via `OPENCLAW_SERVER_TOKEN` env var; written to `~/.openclaw/server-token` for CLI. `/health` exempt. Default: no auth (localhost binding is the primary boundary)
+- **Orphaned process cleanup** — PID file tracking (`~/.openclaw/session-pids.json`) with startup cleanup. Verifies process command line matches known CLIs (claude/codex/gemini/agent) before killing to prevent PID reuse mishaps
 - **Circuit breaker** — engine-level failure tracking with exponential backoff prevents cascading failures from broken CLIs
 - **Rate limiting** — sliding-window rate limiter (100 req/min per IP) on embedded server
 - **Council `defaultPermissionMode`** — new `CouncilConfig` option to override the `bypassPermissions` default for council agents

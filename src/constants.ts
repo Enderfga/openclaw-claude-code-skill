@@ -62,9 +62,6 @@ export const PERSIST_DISK_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 export const FETCH_TIMEOUT_MS = 600_000;
 /** Ultrareview polling interval */
 export const ULTRAREVIEW_POLL_INTERVAL_MS = 5_000;
-/** Pause delay before attempting graceful pause */
-export const PAUSE_DELAY_MS = 3_000;
-
 // ─── Server ─────────────────────────────────────────────────────────────────
 
 /** Default port for the embedded HTTP server */
@@ -103,16 +100,8 @@ export const GIT_LOG_DEPTH = 50;
 
 // ─── Session Manager Limits ─────────────────────────────────────────────────
 
-/** Default max concurrent sessions */
-export const MAX_CONCURRENT_SESSIONS_DEFAULT = 5;
-/** Default session idle TTL in minutes */
-export const SESSION_TTL_MINUTES_DEFAULT = 120;
 /** Max messages per session inbox */
 export const MAX_INBOX_SIZE = 200;
-/** Max ultrareview agents */
-export const MAX_ULTRAREVIEW_AGENTS = 20;
-/** Default ultrareview agent count */
-export const DEFAULT_ULTRAREVIEW_AGENTS = 5;
 
 // ─── Circuit Breaker ────────────────────────────────────────────────────────
 

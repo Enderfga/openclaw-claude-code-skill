@@ -8,6 +8,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
+import { execFileSync } from 'node:child_process';
 import * as http from 'node:http';
 import { createRequire } from 'node:module';
 
@@ -980,6 +981,23 @@ export class SessionManager {
     }
   }
 
+  /**
+   * Verify that a PID belongs to a known coding CLI before killing it.
+   * Prevents killing unrelated processes if the OS recycled the PID.
+   */
+  private _isKnownCliProcess(pid: number): boolean {
+    const knownBins = ['claude', 'codex', 'gemini', 'agent', 'cursor-agent'];
+    try {
+      const cmd = execFileSync('ps', ['-p', String(pid), '-o', 'command='], {
+        encoding: 'utf8',
+        timeout: 3_000,
+      }).trim();
+      return knownBins.some((bin) => cmd.includes(bin));
+    } catch {
+      return false; // ps failed — process likely dead or not accessible
+    }
+  }
+
   private _cleanupOrphanedPids(): void {
     try {
       if (!fs.existsSync(SessionManager.PID_FILE)) return;
@@ -987,7 +1005,11 @@ export class SessionManager {
       for (const [name, pid] of Object.entries(data)) {
         try {
           process.kill(pid, 0); // check if alive
-          // Still alive — kill orphan
+          // Alive — but verify it's actually a coding CLI, not a recycled PID
+          if (!this._isKnownCliProcess(pid)) {
+            console.log(`[SessionManager] PID ${pid} (session: ${name}) is alive but not a known CLI — skipping kill`);
+            continue;
+          }
           console.log(`[SessionManager] Killing orphaned process ${pid} (session: ${name})`);
           try {
             process.kill(-pid, 'SIGKILL');
