@@ -1,6 +1,6 @@
 {
   "name": "@enderfga/openclaw-claude-code",
-  "version": "2.7.0",
+  "version": "2.7.1",
   "description": "OpenClaw plugin — full Claude Code SDK with session management, agent teams, multi-model proxy, and plan mode",
   "type": "module",
   "main": "./dist/src/index.js",
@@ -70,6 +70,7 @@
     "@vitest/coverage-v8": "^3.1.0",
     "eslint": "^9.15.0",
     "eslint-config-prettier": "^10.1.0",
+
     "prettier": "^3.5.0",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",

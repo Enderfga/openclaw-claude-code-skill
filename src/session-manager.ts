@@ -155,6 +155,7 @@ import {
   CIRCUIT_BREAKER_THRESHOLD,
   CIRCUIT_BREAKER_BACKOFF_BASE_MS,
   CIRCUIT_BREAKER_MAX_BACKOFF_MS,
+  STOP_SIGKILL_DELAY_MS,
 } from './constants.js';
 
 // ─── Internal Types ──────────────────────────────────────────────────────────
@@ -986,13 +987,21 @@ export class SessionManager {
    * Prevents killing unrelated processes if the OS recycled the PID.
    */
   private _isKnownCliProcess(pid: number): boolean {
-    const knownBins = ['claude', 'codex', 'gemini', 'agent', 'cursor-agent'];
+    // Match known CLI binaries by basename to avoid false positives
+    // (e.g., 'agent' must not match 'ssh-agent' or 'gpg-agent')
+    const knownPatterns = [
+      /\bclaude\b/, // claude CLI
+      /\bcodex\b/, // codex CLI
+      /\bgemini\b/, // gemini CLI
+      /\bcursor-agent\b/, // cursor-agent CLI
+      /(?:^|\/)agent\s/, // 'agent' as standalone command (not ssh-agent etc.)
+    ];
     try {
       const cmd = execFileSync('ps', ['-p', String(pid), '-o', 'command='], {
         encoding: 'utf8',
         timeout: 3_000,
       }).trim();
-      return knownBins.some((bin) => cmd.includes(bin));
+      return knownPatterns.some((pattern) => pattern.test(cmd));
     } catch {
       return false; // ps failed — process likely dead or not accessible
     }
@@ -1011,16 +1020,32 @@ export class SessionManager {
             continue;
           }
           console.log(`[SessionManager] Killing orphaned process ${pid} (session: ${name})`);
+          // Graceful shutdown: SIGTERM first
           try {
-            process.kill(-pid, 'SIGKILL');
+            process.kill(-pid, 'SIGTERM');
           } catch {
-            /* process group kill failed */
+            /* group kill failed */
           }
           try {
-            process.kill(pid, 'SIGKILL');
+            process.kill(pid, 'SIGTERM');
           } catch {
             /* individual kill failed */
           }
+          // Give process time to shut down, then SIGKILL
+          setTimeout(() => {
+            try {
+              process.kill(pid, 0);
+              process.kill(-pid, 'SIGKILL');
+            } catch {
+              /* already dead or group kill failed */
+            }
+            try {
+              process.kill(pid, 0);
+              process.kill(pid, 'SIGKILL');
+            } catch {
+              /* already dead */
+            }
+          }, STOP_SIGKILL_DELAY_MS);
         } catch {
           // Process already dead — nothing to do
         }

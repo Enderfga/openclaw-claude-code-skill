@@ -27,7 +27,7 @@ import {
   getModelPricing as _getModelPricingBase,
 } from './types.js';
 
-import { MAX_HISTORY_ITEMS, DEFAULT_HISTORY_LIMIT } from './constants.js';
+import { MAX_HISTORY_ITEMS, DEFAULT_HISTORY_LIMIT, SESSION_EVENT } from './constants.js';
 
 function getModelPricing(model?: string) {
   return _getModelPricingBase(model, 'o4-mini');
@@ -95,8 +95,8 @@ export class PersistentCodexSession extends EventEmitter implements ISession {
     this.sessionId = `codex-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     this._startTime = new Date().toISOString();
     this._isReady = true;
-    this.emit('ready');
-    this.emit('init', { type: 'system', subtype: 'init', session_id: this.sessionId });
+    this.emit(SESSION_EVENT.READY);
+    this.emit(SESSION_EVENT.INIT, { type: 'system', subtype: 'init', session_id: this.sessionId });
     return this;
   }
 
@@ -113,7 +113,7 @@ export class PersistentCodexSession extends EventEmitter implements ISession {
 
     if (!options.waitForComplete) {
       // Fire-and-forget: spawn in background
-      this._runCodex(textMessage, options).catch((err) => this.emit('error', err));
+      this._runCodex(textMessage, options).catch((err) => this.emit(SESSION_EVENT.ERROR, err));
       return { requestId, sent: true };
     }
 
@@ -167,12 +167,12 @@ export class PersistentCodexSession extends EventEmitter implements ISession {
         try {
           options.callbacks?.onText?.(chunk);
         } catch {}
-        this.emit('text', chunk);
+        this.emit(SESSION_EVENT.TEXT, chunk);
       });
 
       proc.stderr?.on('data', (data: Buffer) => {
         stderr += data.toString();
-        this.emit('log', `[codex-stderr] ${data.toString()}`);
+        this.emit(SESSION_EVENT.LOG, `[codex-stderr] ${data.toString()}`);
       });
 
       proc.on('close', (code) => {
@@ -204,8 +204,8 @@ export class PersistentCodexSession extends EventEmitter implements ISession {
           stop_reason: code === 0 ? 'end_turn' : 'error',
         };
 
-        this.emit('result', event);
-        this.emit('turn_complete', event);
+        this.emit(SESSION_EVENT.RESULT, event);
+        this.emit(SESSION_EVENT.TURN_COMPLETE, event);
 
         if (code !== 0) {
           // Non-zero exit = error, even if there's stdout
@@ -287,11 +287,11 @@ export class PersistentCodexSession extends EventEmitter implements ISession {
 
   pause(): void {
     this._isPaused = true;
-    this.emit('paused', { sessionId: this.sessionId });
+    this.emit(SESSION_EVENT.PAUSED, { sessionId: this.sessionId });
   }
   resume(): void {
     this._isPaused = false;
-    this.emit('resumed', { sessionId: this.sessionId });
+    this.emit(SESSION_EVENT.RESUMED, { sessionId: this.sessionId });
   }
 
   stop(): void {
@@ -303,7 +303,7 @@ export class PersistentCodexSession extends EventEmitter implements ISession {
     }
     this._isReady = false;
     this._isPaused = false;
-    this.emit('close', 143);
+    this.emit(SESSION_EVENT.CLOSE, 143);
   }
 
   // ─── Private ─────────────────────────────────────────────────────────────

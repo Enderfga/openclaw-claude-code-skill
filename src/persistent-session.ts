@@ -36,6 +36,7 @@ import {
   TURN_TIMEOUT_MS,
   COMPACT_TIMEOUT_MS,
   STOP_SIGKILL_DELAY_MS,
+  SESSION_EVENT,
 } from './constants.js';
 
 // ─── Internal Stats ──────────────────────────────────────────────────────────
@@ -254,7 +255,7 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
         const event = JSON.parse(line) as StreamEvent;
         this._handleEvent(event);
       } catch {
-        this.emit('log', `[stdout] ${line}`);
+        this.emit(SESSION_EVENT.LOG, `[stdout] ${line}`);
       }
     });
 
@@ -266,16 +267,16 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
         .replace(/OPENAI_API_KEY=[^\s]+/g, 'OPENAI_API_KEY=***')
         .replace(/GEMINI_API_KEY=[^\s]+/g, 'GEMINI_API_KEY=***')
         .replace(/Bearer [a-zA-Z0-9_-]+/g, 'Bearer ***');
-      this.emit('log', `[stderr] ${sanitized}`);
+      this.emit(SESSION_EVENT.LOG, `[stderr] ${sanitized}`);
     });
 
     this.proc.on('close', (code) => {
       this._isReady = false;
-      this.emit('close', code);
+      this.emit(SESSION_EVENT.CLOSE, code);
     });
 
     this.proc.on('error', (err) => {
-      this.emit('error', err);
+      this.emit(SESSION_EVENT.ERROR, err);
     });
 
     // Wait for ready
@@ -310,7 +311,7 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
           this._isReady = true;
           // Cleanup the early-close listener since initialization succeeded
           this.removeListener('close', onCloseBeforeReady);
-          this.emit('ready');
+          this.emit(SESSION_EVENT.READY);
         }
       };
       this.once('init', onInit);
@@ -326,7 +327,7 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
         if (!this._isReady) {
           this._isReady = true;
           this.removeListener('close', onCloseBeforeReady);
-          this.emit('ready');
+          this.emit(SESSION_EVENT.READY);
         }
       }, SESSION_READY_FALLBACK_MS);
     });
@@ -347,9 +348,9 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
         if (event.subtype === 'init') {
           this.sessionId = event.session_id;
           this.stats.startTime = new Date().toISOString();
-          this.emit('init', event);
+          this.emit(SESSION_EVENT.INIT, event);
         }
-        this.emit('system', event);
+        this.emit(SESSION_EVENT.SYSTEM, event);
         break;
 
       case 'stream_event': {
@@ -365,7 +366,7 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
             try {
               this._streamCallbacks?.onToolUse?.(toolEvent);
             } catch {}
-            this.emit('tool_use', toolEvent);
+            this.emit(SESSION_EVENT.TOOL_USE, toolEvent);
           }
         } else if (innerType === 'content_block_delta') {
           const delta = (inner as Record<string, unknown>).delta as Record<string, unknown> | undefined;
@@ -373,7 +374,7 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
             try {
               this._streamCallbacks?.onText?.(delta.text as string);
             } catch {}
-            this.emit('text', delta.text);
+            this.emit(SESSION_EVENT.TEXT, delta.text);
           }
         } else if (innerType === 'message_delta') {
           const usage = (inner as Record<string, unknown>).usage as Record<string, number> | undefined;
@@ -384,17 +385,17 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
             this._updateCost();
           }
         }
-        this.emit('stream_event', event);
+        this.emit(SESSION_EVENT.STREAM_EVENT, event);
         break;
       }
 
       case 'user':
         this.stats.turns++;
-        this.emit('user_echo', event);
+        this.emit(SESSION_EVENT.USER_ECHO, event);
         break;
 
       case 'assistant':
-        this.emit('assistant', event);
+        this.emit(SESSION_EVENT.ASSISTANT, event);
         if (event.message?.content && Array.isArray(event.message.content)) {
           for (const block of event.message.content) {
             if (block.type === 'tool_use') {
@@ -408,7 +409,7 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
               try {
                 this._streamCallbacks?.onToolUse?.(toolEvent);
               } catch {}
-              this.emit('tool_use', toolEvent);
+              this.emit(SESSION_EVENT.TOOL_USE, toolEvent);
             }
           }
         }
@@ -419,7 +420,7 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
         try {
           this._streamCallbacks?.onToolUse?.(event);
         } catch {}
-        this.emit('tool_use', event);
+        this.emit(SESSION_EVENT.TOOL_USE, event);
         break;
 
       case 'tool_result':
@@ -433,11 +434,14 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
             error: (event as Record<string, unknown>).error,
           });
         }
-        this.emit('tool_result', event);
+        this.emit(SESSION_EVENT.TOOL_RESULT, event);
         break;
 
       case 'error':
-        this.emit('error', new Error(String((event as Record<string, unknown>).error) || JSON.stringify(event)));
+        this.emit(
+          SESSION_EVENT.ERROR,
+          new Error(String((event as Record<string, unknown>).error) || JSON.stringify(event)),
+        );
         break;
 
       case 'result': {
@@ -448,8 +452,8 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
           this.stats.cachedTokens += usage.cache_read_input_tokens || 0;
           this._updateCost();
         }
-        this.emit('result', event);
-        this.emit('turn_complete', event);
+        this.emit(SESSION_EVENT.RESULT, event);
+        this.emit(SESSION_EVENT.TURN_COMPLETE, event);
         this._fireHook('onTurnComplete', {
           text: event.result,
           usage,
@@ -469,7 +473,7 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
       }
 
       default:
-        this.emit('event', event);
+        this.emit(SESSION_EVENT.EVENT, event);
     }
   }
 
@@ -675,11 +679,11 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
 
   pause(): void {
     this._isPaused = true;
-    this.emit('paused', { sessionId: this.sessionId });
+    this.emit(SESSION_EVENT.PAUSED, { sessionId: this.sessionId });
   }
   resume(): void {
     this._isPaused = false;
-    this.emit('resumed', { sessionId: this.sessionId });
+    this.emit(SESSION_EVENT.RESUMED, { sessionId: this.sessionId });
   }
 
   stop(): void {
@@ -713,7 +717,7 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
     }
     this._isReady = false;
     this._isPaused = false;
-    this.emit('close', 143);
+    this.emit(SESSION_EVENT.CLOSE, 143);
   }
 
   // ─── Private ─────────────────────────────────────────────────────────────

@@ -37,7 +37,7 @@ export const GIT_CMD_TIMEOUT_MS = 5_000;
 /** Timeout for git worktree add/remove (heavier operations) */
 export const WORKTREE_CMD_TIMEOUT_MS = 10_000;
 /** Default per-agent timeout in council */
-export const AGENT_DEFAULT_TIMEOUT_MS = 1_800_000;
+export const DEFAULT_AGENT_TIMEOUT_MS = 1_800_000;
 /** Delay between council rounds */
 export const INTER_ROUND_DELAY_MS = 3_000;
 /** Delay before retrying on empty agent response */
@@ -62,6 +62,7 @@ export const PERSIST_DISK_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 export const FETCH_TIMEOUT_MS = 600_000;
 /** Ultrareview polling interval */
 export const ULTRAREVIEW_POLL_INTERVAL_MS = 5_000;
+
 // ─── Server ─────────────────────────────────────────────────────────────────
 
 /** Default port for the embedded HTTP server */

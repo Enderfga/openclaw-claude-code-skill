@@ -36,7 +36,7 @@ import {
 } from './types.js';
 import { parseConsensus, stripConsensusTags, hasConsensusMarker } from './consensus.js';
 import {
-  AGENT_DEFAULT_TIMEOUT_MS as DEFAULT_AGENT_TIMEOUT_MS,
+  DEFAULT_AGENT_TIMEOUT_MS,
   MIN_TASK_LENGTH,
   INTER_ROUND_DELAY_MS,
   EMPTY_RESPONSE_MAX_RETRIES,
@@ -853,12 +853,15 @@ export class Council extends EventEmitter {
    * Internal cleanup helper — removes worktrees, branches, plan.md, and reviews/.
    * Each cleanup step is independently gated by the `options` flags.
    */
-  private async _cleanup(options: {
-    removeWorktrees?: boolean;
-    deleteBranches?: boolean;
-    removePlan?: boolean;
-    removeReviews?: boolean;
-  }): Promise<{
+  private async _cleanup(
+    projectDir: string,
+    options: {
+      removeWorktrees?: boolean;
+      deleteBranches?: boolean;
+      removePlan?: boolean;
+      removeReviews?: boolean;
+    },
+  ): Promise<{
     worktreesRemoved: string[];
     branchesDeleted: string[];
     planDeleted: boolean;
@@ -870,7 +873,6 @@ export class Council extends EventEmitter {
       planDeleted: false,
       reviewsDeleted: false,
     };
-    const projectDir = this.config.projectDir;
 
     // Remove council worktrees
     if (options.removeWorktrees) {
@@ -962,12 +964,15 @@ export class Council extends EventEmitter {
       spawnAsync('git', ['-C', dir, 'checkout', 'master'], { timeout: GIT_CMD_TIMEOUT_MS }).catch(() => {}),
     );
 
-    const { worktreesRemoved, branchesDeleted, planDeleted, reviewsDeleted } = await this._cleanup({
-      removeWorktrees: true,
-      deleteBranches: true,
-      removePlan: true,
-      removeReviews: true,
-    });
+    const { worktreesRemoved, branchesDeleted, planDeleted, reviewsDeleted } = await this._cleanup(
+      this.config.projectDir,
+      {
+        removeWorktrees: true,
+        deleteBranches: true,
+        removePlan: true,
+        removeReviews: true,
+      },
+    );
 
     // Update session status
     session.status = 'accepted';

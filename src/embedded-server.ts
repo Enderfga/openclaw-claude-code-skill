@@ -66,6 +66,7 @@ export class EmbeddedServer {
         else this._rateWindows.set(ip, recent);
       }
     }, RATE_LIMIT_WINDOW_MS);
+    this._rateLimitCleanupTimer.unref();
 
     return new Promise((resolve, reject) => {
       this.server = http.createServer((req, res) => this.handleRequest(req, res));
@@ -95,8 +96,11 @@ export class EmbeddedServer {
       clearInterval(this._rateLimitCleanupTimer);
       this._rateLimitCleanupTimer = null;
     }
+    // Only delete token file if it matches our token
     try {
-      fs.unlinkSync(path.join(os.homedir(), '.openclaw', 'server-token'));
+      const tokenPath = path.join(os.homedir(), '.openclaw', 'server-token');
+      const stored = fs.readFileSync(tokenPath, 'utf8');
+      if (stored === this.authToken) fs.unlinkSync(tokenPath);
     } catch {
       /* ignore */
     }

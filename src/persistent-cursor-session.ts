@@ -30,7 +30,7 @@ import {
   getModelPricing as _getModelPricingBase,
 } from './types.js';
 
-import { MAX_HISTORY_ITEMS, DEFAULT_HISTORY_LIMIT } from './constants.js';
+import { MAX_HISTORY_ITEMS, DEFAULT_HISTORY_LIMIT, SESSION_EVENT } from './constants.js';
 
 function getModelPricing(model?: string) {
   return _getModelPricingBase(model, 'claude-sonnet-4-6');
@@ -98,8 +98,8 @@ export class PersistentCursorSession extends EventEmitter implements ISession {
     this.sessionId = `cursor-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     this._startTime = new Date().toISOString();
     this._isReady = true;
-    this.emit('ready');
-    this.emit('init', { type: 'system', subtype: 'init', session_id: this.sessionId });
+    this.emit(SESSION_EVENT.READY);
+    this.emit(SESSION_EVENT.INIT, { type: 'system', subtype: 'init', session_id: this.sessionId });
     return this;
   }
 
@@ -115,7 +115,7 @@ export class PersistentCursorSession extends EventEmitter implements ISession {
     const textMessage = typeof message === 'string' ? message : JSON.stringify(message);
 
     if (!options.waitForComplete) {
-      this._runCursor(textMessage, options).catch((err) => this.emit('error', err));
+      this._runCursor(textMessage, options).catch((err) => this.emit(SESSION_EVENT.ERROR, err));
       return { requestId, sent: true };
     }
 
@@ -176,7 +176,7 @@ export class PersistentCursorSession extends EventEmitter implements ISession {
           try {
             options.callbacks?.onText?.(line + '\n');
           } catch {}
-          this.emit('text', line + '\n');
+          this.emit(SESSION_EVENT.TEXT, line + '\n');
         }
       });
 
@@ -186,7 +186,7 @@ export class PersistentCursorSession extends EventEmitter implements ISession {
           .replace(/CURSOR_API_KEY=[^\s]+/g, 'CURSOR_API_KEY=***')
           .replace(/Bearer [a-zA-Z0-9_-]+/g, 'Bearer ***');
         stderr += sanitized;
-        this.emit('log', `[cursor-stderr] ${sanitized}`);
+        this.emit(SESSION_EVENT.LOG, `[cursor-stderr] ${sanitized}`);
       });
 
       proc.on('close', (code) => {
@@ -220,8 +220,8 @@ export class PersistentCursorSession extends EventEmitter implements ISession {
           stop_reason: code === 0 ? 'end_turn' : 'error',
         };
 
-        this.emit('result', event);
-        this.emit('turn_complete', event);
+        this.emit(SESSION_EVENT.RESULT, event);
+        this.emit(SESSION_EVENT.TURN_COMPLETE, event);
 
         if (code !== 0 && !resultText.value) {
           reject(new Error(stderr || `Cursor exited with code ${code}`));
@@ -276,7 +276,7 @@ export class PersistentCursorSession extends EventEmitter implements ISession {
               try {
                 options.callbacks?.onText?.(block.text);
               } catch {}
-              this.emit('text', block.text);
+              this.emit(SESSION_EVENT.TEXT, block.text);
             }
           }
         }
@@ -292,7 +292,7 @@ export class PersistentCursorSession extends EventEmitter implements ISession {
           try {
             options.callbacks?.onText?.(text);
           } catch {}
-          this.emit('text', text);
+          this.emit(SESSION_EVENT.TEXT, text);
         }
         break;
       }
@@ -302,7 +302,7 @@ export class PersistentCursorSession extends EventEmitter implements ISession {
         try {
           options.callbacks?.onToolUse?.(event);
         } catch {}
-        this.emit('tool_use', event);
+        this.emit(SESSION_EVENT.TOOL_USE, event);
         break;
 
       case 'tool_result':
@@ -310,7 +310,7 @@ export class PersistentCursorSession extends EventEmitter implements ISession {
           options.callbacks?.onToolResult?.(event);
         } catch {}
         if (event.is_error) this._stats.toolErrors++;
-        this.emit('tool_result', event);
+        this.emit(SESSION_EVENT.TOOL_RESULT, event);
         break;
 
       case 'result': {
@@ -331,7 +331,7 @@ export class PersistentCursorSession extends EventEmitter implements ISession {
       }
 
       case 'error':
-        this.emit('log', `[cursor-error] ${event.error || JSON.stringify(event)}`);
+        this.emit(SESSION_EVENT.LOG, `[cursor-error] ${event.error || JSON.stringify(event)}`);
         break;
 
       default:
@@ -401,11 +401,11 @@ export class PersistentCursorSession extends EventEmitter implements ISession {
 
   pause(): void {
     this._isPaused = true;
-    this.emit('paused', { sessionId: this.sessionId });
+    this.emit(SESSION_EVENT.PAUSED, { sessionId: this.sessionId });
   }
   resume(): void {
     this._isPaused = false;
-    this.emit('resumed', { sessionId: this.sessionId });
+    this.emit(SESSION_EVENT.RESUMED, { sessionId: this.sessionId });
   }
 
   stop(): void {
@@ -424,7 +424,7 @@ export class PersistentCursorSession extends EventEmitter implements ISession {
     }
     this._isReady = false;
     this._isPaused = false;
-    this.emit('close', 143);
+    this.emit(SESSION_EVENT.CLOSE, 143);
   }
 
   // ─── Private ─────────────────────────────────────────────────────────────
