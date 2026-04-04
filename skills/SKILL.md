@@ -1,12 +1,12 @@
 ---
 name: claude-code-skill
-description: Manage persistent coding sessions across Claude Code, Codex, and Gemini engines. Use when orchestrating multi-engine coding agents, starting/sending/stopping sessions, running multi-agent council collaborations, cross-session messaging, ultraplan deep planning, ultrareview parallel code review, or switching models/tools at runtime. Triggers on "start a session", "send to session", "run council", "ultraplan", "ultrareview", "switch model", "multi-agent", "coding session", "session inbox".
+description: Manage persistent coding sessions across Claude Code, Codex, Gemini, and Cursor engines. Use when orchestrating multi-engine coding agents, starting/sending/stopping sessions, running multi-agent council collaborations, cross-session messaging, ultraplan deep planning, ultrareview parallel code review, or switching models/tools at runtime. Triggers on "start a session", "send to session", "run council", "ultraplan", "ultrareview", "switch model", "multi-agent", "coding session", "session inbox", "cursor agent".
 metadata:
   {
     "openclaw":
       {
         "emoji": "🤖",
-        "requires": { "anyBins": ["claude", "codex", "gemini"] },
+        "requires": { "anyBins": ["claude", "codex", "gemini", "agent"] },
         "install":
           [
             {
@@ -43,7 +43,7 @@ metadata:
 
 # Claude Code Skill
 
-Persistent multi-engine coding session manager. Wraps Claude Code, Codex, and Gemini CLIs into headless agentic engines with 27 tools.
+Persistent multi-engine coding session manager. Wraps Claude Code, Codex, Gemini, and Cursor CLIs into headless agentic engines with 27 tools.
 
 ## Engine Quick Reference
 
@@ -52,6 +52,7 @@ Persistent multi-engine coding session manager. Wraps Claude Code, Codex, and Ge
 | `claude` | `claude` | Persistent subprocess | Multi-turn, complex tasks |
 | `codex` | `codex exec` | Per-message spawn | One-shot execution |
 | `gemini` | `gemini -p` | Per-message spawn | One-shot execution |
+| `cursor` | `agent -p` | Per-message spawn | One-shot execution |
 
 ## Core Workflow
 
@@ -60,6 +61,7 @@ Persistent multi-engine coding session manager. Wraps Claude Code, Codex, and Ge
 claude-code-skill session-start myproject -d /path/to/project --engine claude
 claude-code-skill session-start codex-task -d /path/to/project --engine codex
 claude-code-skill session-start gemini-task -d /path/to/project --engine gemini
+claude-code-skill session-start cursor-task -d /path/to/project --engine cursor
 
 # 2. Send messages
 claude-code-skill session-send myproject "Fix the auth bug" --stream
@@ -76,8 +78,8 @@ claude-code-skill session-stop myproject
 
 | Option | Description |
 |--------|-------------|
-| `--engine` | `claude` (default), `codex`, `gemini` |
-| `--model` | Model name or alias (`opus`, `sonnet`, `haiku`, `o4-mini`, `gemini-pro`) |
+| `--engine` | `claude` (default), `codex`, `gemini`, `cursor` |
+| `--model` | Model name or alias (`opus`, `sonnet`, `haiku`, `o4-mini`, `gemini-pro`, `sonnet-4`) |
 | `--permission-mode` | `acceptEdits`, `auto`, `plan`, `bypassPermissions`, `default` |
 | `--effort` | `low`, `medium`, `high`, `max`, `auto` |
 | `--max-budget` | Cost limit in USD |
@@ -118,7 +120,7 @@ claude-code-skill session-deliver-inbox receiver
 ## Team Tools (All Engines)
 
 - **Claude**: native `/team` and `@teammate` commands
-- **Codex/Gemini**: virtual teams via cross-session inbox routing
+- **Codex/Gemini/Cursor**: virtual teams via cross-session inbox routing
 
 ```bash
 claude-code-skill session-team-list myproject
@@ -152,3 +154,4 @@ Each engine requires its own auth before use:
 - **Claude**: `claude /login` or `ANTHROPIC_API_KEY`
 - **Codex**: `codex login` or `OPENAI_API_KEY`
 - **Gemini**: `gemini login` or `GEMINI_API_KEY`
+- **Cursor**: `agent login` or `CURSOR_API_KEY`

@@ -21,6 +21,7 @@ export { SessionManager } from './session-manager.js';
 export { PersistentClaudeSession } from './persistent-session.js';
 export { PersistentCodexSession } from './persistent-codex-session.js';
 export { PersistentGeminiSession } from './persistent-gemini-session.js';
+export { PersistentCursorSession } from './persistent-cursor-session.js';
 export { Council, getDefaultCouncilConfig } from './council.js';
 export { parseConsensus, stripConsensusTags, hasConsensusMarker } from './consensus.js';
 export { sanitizeCwd, validateRegex, validateName } from './validation.js';
@@ -122,7 +123,7 @@ const plugin = {
     api.registerTool({
       name: 'claude_session_start',
       description:
-        'Start a persistent coding session. Supports multiple engines: claude (default) for Claude Code CLI, codex for OpenAI Codex CLI, gemini for Google Gemini CLI.',
+        'Start a persistent coding session. Supports multiple engines: claude (default) for Claude Code CLI, codex for OpenAI Codex CLI, gemini for Google Gemini CLI, cursor for Cursor Agent CLI.',
       parameters: {
         type: 'object',
         properties: {
@@ -130,7 +131,7 @@ const plugin = {
           cwd: { type: 'string', description: 'Working directory' },
           engine: {
             type: 'string',
-            enum: ['claude', 'codex', 'gemini'],
+            enum: ['claude', 'codex', 'gemini', 'cursor'],
             description: 'Engine to use (default: claude)',
           },
           model: { type: 'string', description: 'Model to use (opus, sonnet, haiku, gemini-pro, o4-mini, etc.)' },
@@ -456,7 +457,7 @@ const plugin = {
                 persona: { type: 'string', description: 'Agent personality/expertise description' },
                 engine: {
                   type: 'string',
-                  enum: ['claude', 'codex', 'gemini'],
+                  enum: ['claude', 'codex', 'gemini', 'cursor'],
                   description: 'Engine (default: claude)',
                 },
                 model: { type: 'string', description: 'Model to use' },

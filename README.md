@@ -45,7 +45,7 @@ See [Getting Started](./skills/references/getting-started.md) for full setup gui
 
 ### Multi-Engine Sessions
 
-Drive Claude Code, OpenAI Codex, and Google Gemini through a unified `ISession` interface. Each engine manages its own subprocess, events, and cost tracking.
+Drive Claude Code, OpenAI Codex, Google Gemini, and Cursor Agent through a unified `ISession` interface. Each engine manages its own subprocess, events, and cost tracking.
 
 ```typescript
 // Claude Code engine (default)
@@ -56,6 +56,9 @@ await manager.startSession({ name: 'codex-task', engine: 'codex', model: 'o4-min
 
 // Gemini engine
 await manager.startSession({ name: 'gemini-task', engine: 'gemini', model: 'gemini-pro' });
+
+// Cursor Agent engine
+await manager.startSession({ name: 'cursor-task', engine: 'cursor', model: 'sonnet-4' });
 ```
 
 See [Multi-Engine](./skills/references/multi-engine.md) for architecture and adding new engines.
@@ -141,6 +144,7 @@ graph TD
     C --> D[Claude Engine<br/>persistent-session.ts]
     C --> E[Codex Engine<br/>persistent-codex-session.ts]
     C --> K[Gemini Engine<br/>persistent-gemini-session.ts]
+    C --> L[Cursor Engine<br/>persistent-cursor-session.ts]
     C --> F[Council<br/>council.ts]
     C --> G[Inbox / Ultraplan / Ultrareview]
     F -->|git worktree per agent| D
@@ -156,6 +160,7 @@ src/
 ├── persistent-session.ts       # Claude Code engine (ISession)
 ├── persistent-codex-session.ts # Codex engine (ISession)
 ├── persistent-gemini-session.ts # Gemini engine (ISession)
+├── persistent-cursor-session.ts # Cursor Agent engine (ISession)
 ├── session-manager.ts          # Multi-session orchestration + council management
 ├── council.ts                  # Multi-agent council orchestration
 ├── consensus.ts                # Consensus vote parsing
@@ -187,20 +192,21 @@ For contributing: see [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 ## Engine Compatibility
 
-All three engines are tested and verified in each release:
+All engines are tested and verified in each release:
 
 | Engine | CLI | Tested Version | Invocation | Status |
 |--------|-----|---------------|------------|--------|
 | Claude Code | `claude` | 2.1.91 | Persistent subprocess, stream-json | **Fully supported** |
 | OpenAI Codex | `codex` | 0.118.0 | `codex exec --full-auto`, per-message | **Fully supported** |
 | Google Gemini | `gemini` | 0.36.0 | `gemini -p --output-format stream-json`, per-message | **Fully supported** |
+| Cursor Agent | `agent` | 2026.03.30 | `agent -p --force --output-format stream-json`, per-message | **Fully supported** |
 
 > **Note:** CLI versions evolve independently. If a new CLI version changes its flags or output format, the plugin may need an update. Pin your CLI versions in CI to avoid surprises.
 
 ### Known Limitations
 
-- **Team tools** (`team_list`, `team_send`) work on all engines: Claude uses native agent teams; Codex/Gemini use cross-session messaging as a virtual team layer
-- **Codex/Gemini sessions** are one-shot per message (no persistent subprocess) — context is carried via working directory, not conversation history
+- **Team tools** (`team_list`, `team_send`) work on all engines: Claude uses native agent teams; Codex/Gemini/Cursor use cross-session messaging as a virtual team layer
+- **Codex/Gemini/Cursor sessions** are one-shot per message (no persistent subprocess) — context is carried via working directory, not conversation history
 - **Council consensus** requires agents to output an explicit `[CONSENSUS: YES/NO]` tag — loose phrasing will default to NO
 - **Inbox delivered messages** are not retained in inbox history (only queued messages appear)
 
@@ -211,6 +217,7 @@ All three engines are tested and verified in each release:
 - **OpenClaw >= 2026.3.0** (optional, for plugin mode)
 - **Codex CLI >= 0.112** (optional) — `npm install -g @openai/codex`
 - **Gemini CLI >= 0.35** (optional) — `npm install -g @google/gemini-cli`
+- **Cursor Agent CLI** (optional) — Install via Cursor IDE or `curl https://cursor.com/install -fsSL | bash`
 
 ## License
 

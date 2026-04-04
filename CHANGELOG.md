@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.0] - 2026-04-04
+
+### Added
+- **Cursor Agent engine** — new `engine: 'cursor'` option wraps the Cursor Agent CLI (`agent`) with headless print mode, stream-json parsing, and full `ISession` interface support. Resolves #32
+- `PersistentCursorSession` class (`src/persistent-cursor-session.ts`) implementing the same pattern as Codex/Gemini engines
+- Unit tests for Cursor session (spawn flags, stream-json parsing, lifecycle, stderr sanitization)
+- Cursor engine support in council agents — use `engine: 'cursor'` in agent personas for mixed-engine councils
+
 ## [2.6.1] - 2026-04-03
 
 ### Added

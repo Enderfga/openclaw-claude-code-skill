@@ -114,6 +114,7 @@ import { sanitizeCwd, validateName } from './validation.js';
 import { PersistentClaudeSession } from './persistent-session.js';
 import { PersistentGeminiSession } from './persistent-gemini-session.js';
 import { PersistentCodexSession } from './persistent-codex-session.js';
+import { PersistentCursorSession } from './persistent-cursor-session.js';
 import {
   type SessionConfig,
   type SessionInfo,
@@ -951,6 +952,8 @@ export class SessionManager {
         return new PersistentGeminiSession(config, process.env.GEMINI_BIN);
       case 'codex':
         return new PersistentCodexSession(config, process.env.CODEX_BIN);
+      case 'cursor':
+        return new PersistentCursorSession(config, process.env.CURSOR_BIN);
       case 'claude':
       default:
         return new PersistentClaudeSession(config, this.pluginConfig.claudeBin);

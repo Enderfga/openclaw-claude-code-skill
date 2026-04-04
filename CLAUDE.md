@@ -4,7 +4,7 @@ This file provides context for Claude Code when working on this project.
 
 ## Architecture
 
-OpenClaw plugin that wraps coding CLIs (Claude Code, Codex, Gemini) into a
+OpenClaw plugin that wraps coding CLIs (Claude Code, Codex, Gemini, Cursor) into a
 managed session layer. Key source files:
 
 | File | Purpose |
@@ -14,6 +14,7 @@ managed session layer. Key source files:
 | `src/persistent-session.ts` | Claude Code CLI wrapper (spawn, JSON protocol, stream parsing) |
 | `src/persistent-codex-session.ts` | Codex CLI wrapper (`codex exec --full-auto`) |
 | `src/persistent-gemini-session.ts` | Gemini CLI wrapper (`gemini -p --output-format stream-json`) |
+| `src/persistent-cursor-session.ts` | Cursor Agent CLI wrapper (`agent -p --force --output-format stream-json`) |
 | `src/council.ts` | Multi-agent collaboration engine with git worktree isolation and post-processing |
 | `src/consensus.ts` | Consensus voting parser for council |
 | `src/types.ts` | All shared types, interfaces, model pricing |
@@ -146,5 +147,6 @@ Current tested versions (update on each release):
 | Claude | `claude` | 2.1.91 | Persistent subprocess, `--output-format stream-json` |
 | Codex | `codex` | 0.118.0 | `codex exec --full-auto --skip-git-repo-check -C <dir>` |
 | Gemini | `gemini` | 0.36.0 | `gemini -p <msg> --output-format stream-json --yolo/--sandbox` |
+| Cursor | `agent` | 2026.03.30 | `agent -p <msg> --force --trust --output-format stream-json --workspace <dir>` |
 
 **Important:** When CLI vendors change flags or output format, update the corresponding `persistent-*-session.ts` and re-run integration tests.

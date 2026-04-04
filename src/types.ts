@@ -10,7 +10,7 @@ export type EffortLevel = 'low' | 'medium' | 'high' | 'max' | 'auto';
 
 // ─── Engine ─────────────────────────────────────────────────────────────────
 
-export type EngineType = 'claude' | 'codex' | 'gemini';
+export type EngineType = 'claude' | 'codex' | 'gemini' | 'cursor';
 
 // ─── Session Config ──────────────────────────────────────────────────────────
 
@@ -332,7 +332,7 @@ export function overrideModelPricing(overrides: Record<string, Partial<ModelPric
  */
 export function getModelPricing(model?: string, defaultModel = 'claude-sonnet-4-6'): ModelPricing {
   if (!model) return MODEL_PRICING[defaultModel] ?? { input: 0, output: 0 };
-  const key = model.replace(/^anthropic\/|^google\/|^openai\/|^openai-codex\/|^gemini\//g, '');
+  const key = model.replace(/^anthropic\/|^google\/|^openai\/|^openai-codex\/|^gemini\/|^cursor\//g, '');
   return MODEL_PRICING[key] ?? MODEL_PRICING[defaultModel] ?? { input: 0, output: 0 };
 }
 

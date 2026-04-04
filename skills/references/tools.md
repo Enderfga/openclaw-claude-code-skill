@@ -12,7 +12,7 @@ Start a persistent coding session with full CLI flag support.
 |-----------|------|-------------|
 | `name` | string | Session name (auto-generated if omitted) |
 | `cwd` | string | Working directory |
-| `engine` | `'claude'` \| `'codex'` \| `'gemini'` | Engine to use (default: `claude`) |
+| `engine` | `'claude'` \| `'codex'` \| `'gemini'` \| `'cursor'` | Engine to use (default: `claude`) |
 | `model` | string | Model alias or full name |
 | `permissionMode` | string | `acceptEdits`, `bypassPermissions`, `plan`, `auto`, `default` |
 | `effort` | string | `low`, `medium`, `high`, `max`, `auto` |

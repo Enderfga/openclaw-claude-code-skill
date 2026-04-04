@@ -6,12 +6,14 @@ openclaw-claude-code supports multiple coding CLI engines behind a unified `ISes
 
 ```
 SessionManager
-├── engine: 'claude' → PersistentClaudeSession
+├── engine: 'claude'  → PersistentClaudeSession
 │   └── Wraps: claude CLI (stream-json protocol, persistent subprocess)
-├── engine: 'codex'  → PersistentCodexSession
+├── engine: 'codex'   → PersistentCodexSession
 │   └── Wraps: codex exec --full-auto (per-message spawning)
-└── engine: 'gemini' → PersistentGeminiSession
-    └── Wraps: gemini -p --output-format stream-json (per-message spawning)
+├── engine: 'gemini'  → PersistentGeminiSession
+│   └── Wraps: gemini -p --output-format stream-json (per-message spawning)
+└── engine: 'cursor'  → PersistentCursorSession
+    └── Wraps: agent -p --force --output-format stream-json (per-message spawning)
 ```
 
 ## Supported Engines
@@ -73,6 +75,28 @@ await manager.startSession({
 });
 ```
 
+### Cursor Agent (`engine: 'cursor'`)
+
+Wraps the Cursor Agent CLI (`agent`) with `--print --force --output-format stream-json`. Each `send()` spawns a new process.
+
+- One-shot execution per message (no persistent subprocess)
+- Working directory via `--workspace` flag
+- Real token counts from stream-json `result` events (camelCase: `inputTokens`, `outputTokens`, `cacheReadTokens`)
+- `--force` enables auto-approval of all file changes
+- `--trust` auto-trusts the workspace without prompting
+- Cursor uses its own model routing (e.g., `sonnet-4`, `gpt-5`, `auto`)
+- Requires Cursor Agent CLI: `curl https://cursor.com/install -fsSL | bash`
+- Binary: `agent` (set `CURSOR_BIN` env var to override)
+
+```typescript
+await manager.startSession({
+  name: 'cursor-task',
+  engine: 'cursor',
+  model: 'sonnet-4',
+  cwd: '/project',
+});
+```
+
 ## ISession Interface
 
 All engines implement `ISession`, making them interchangeable at the `SessionManager` level:
@@ -122,8 +146,9 @@ Team tools (`team_list`, `team_send`) work on all engines with engine-appropriat
 | Claude | Native `/team` command | Native `@teammate` command |
 | Codex | Lists other active SessionManager sessions | Routes via cross-session inbox |
 | Gemini | Lists other active SessionManager sessions | Routes via cross-session inbox |
+| Cursor | Lists other active SessionManager sessions | Routes via cross-session inbox |
 
-For Codex and Gemini, the "team" is the set of all active sessions managed by SessionManager. Messages are delivered via the inbox system — idle sessions receive immediately, busy sessions queue for later delivery.
+For Codex, Gemini, and Cursor, the "team" is the set of all active sessions managed by SessionManager. Messages are delivered via the inbox system — idle sessions receive immediately, busy sessions queue for later delivery.
 
 ## Proxy: Any Model via OpenClaw Gateway
 
