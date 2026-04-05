@@ -203,6 +203,119 @@ describe('createProxyHandler', () => {
     });
   });
 
+  describe('Anthropic passthrough', () => {
+    it('returns 401 when no ANTHROPIC_API_KEY', async () => {
+      const noKeyHandler = createProxyHandler(undefined, {});
+      const req = makeReq({ body: makeAnthropicBody('claude-sonnet-4-6') });
+      const res = makeRes();
+      await noKeyHandler(req as never, res as never);
+
+      expect(res.statusCode).toBe(401);
+      expect(res.body).toEqual({ error: 'No ANTHROPIC_API_KEY configured' });
+    });
+
+    it('forwards non-streaming Anthropic requests with retry support', async () => {
+      // First call returns 429, second succeeds
+      mockFetch
+        .mockResolvedValueOnce(new Response('', { status: 429, headers: { 'Retry-After': '0' } }))
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ id: 'msg_2', type: 'message', content: [], role: 'assistant' }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        );
+
+      const req = makeReq({ body: makeAnthropicBody('claude-sonnet-4-6', false) });
+      const res = makeRes();
+      await handler(req as never, res as never);
+
+      // fetchWithRetry retries on 429
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(res.statusCode).toBe(200);
+    });
+
+    it('passes through upstream error status', async () => {
+      mockFetch.mockResolvedValueOnce(
+        new Response(JSON.stringify({ type: 'error', error: { type: 'rate_limit', message: 'Too many requests' } }), {
+          status: 529,
+        }),
+      );
+
+      const req = makeReq({ body: makeAnthropicBody('claude-sonnet-4-6', false) });
+      const res = makeRes();
+      await handler(req as never, res as never);
+
+      // Non-retryable status (529 not in RETRY_STATUS_CODES) — passed through directly
+      expect(res.statusCode).toBe(529);
+    });
+  });
+
+  describe('streaming', () => {
+    it('sets SSE headers and streams GPT response chunks', async () => {
+      // Create a streaming response with SSE data
+      const sseData = [
+        'data: {"id":"chatcmpl-1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"hi"},"finish_reason":null}]}\n\n',
+        'data: [DONE]\n\n',
+      ].join('');
+
+      mockFetch.mockResolvedValueOnce(
+        new Response(sseData, {
+          status: 200,
+          headers: { 'Content-Type': 'text/event-stream' },
+        }),
+      );
+
+      const req = makeReq({ body: makeAnthropicBody('gpt-5.4', true) });
+      const res = makeRes();
+      await handler(req as never, res as never);
+
+      expect(res.headers['Content-Type']).toBe('text/event-stream');
+      expect(res.headers['Cache-Control']).toBe('no-cache');
+      expect(res.ended).toBe(true);
+      // Should have written SSE chunks
+      expect(res.written.length).toBeGreaterThan(0);
+    });
+
+    it('handles upstream streaming error', async () => {
+      mockFetch.mockResolvedValueOnce(
+        new Response('{"error": "bad request"}', {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+
+      const req = makeReq({ body: makeAnthropicBody('gpt-5.4', true) });
+      const res = makeRes();
+      await handler(req as never, res as never);
+
+      expect(res.statusCode).toBe(400);
+      expect(res.body).toEqual(
+        expect.objectContaining({
+          type: 'error',
+          error: expect.objectContaining({ type: 'api_error' }),
+        }),
+      );
+    });
+
+    it('handles null response body gracefully', async () => {
+      // Create a response without a body
+      const resp = new Response(null, {
+        status: 200,
+        headers: { 'Content-Type': 'text/event-stream' },
+      });
+      // Override body to null
+      Object.defineProperty(resp, 'body', { value: null });
+
+      mockFetch.mockResolvedValueOnce(resp);
+
+      const req = makeReq({ body: makeAnthropicBody('gpt-5.4', true) });
+      const res = makeRes();
+      await handler(req as never, res as never);
+
+      expect(res.ended).toBe(true);
+    });
+  });
+
   describe('error handling', () => {
     it('returns 500 on fetch failure', async () => {
       mockFetch.mockRejectedValue(new Error('Network error'));
@@ -240,6 +353,22 @@ describe('createProxyHandler', () => {
       await handler(req as never, res as never);
 
       expect(res.statusCode).toBe(500);
+    });
+
+    it('forwards non-200 from direct provider (non-streaming)', async () => {
+      mockFetch.mockResolvedValueOnce(
+        new Response('{"error": "invalid"}', {
+          status: 422,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+
+      const req = makeReq({ body: makeAnthropicBody('gpt-5.4') });
+      const res = makeRes();
+      await handler(req as never, res as never);
+
+      // 422 is not in RETRY_STATUS_CODES, so it passes through
+      expect(res.statusCode).toBe(422);
     });
   });
 });

@@ -1171,6 +1171,15 @@ export class SessionManager {
     if (existing) clearTimeout(existing);
 
     const timer = setTimeout(() => {
+      // Abort if still running to prevent orphaned background tasks
+      const council = this.councils.get(id);
+      if (council) {
+        const session = council.getSession();
+        if (session?.status === 'running') {
+          console.log(`[SessionManager] Council ${id} still running at TTL expiry — aborting`);
+          council.abort();
+        }
+      }
       this.councils.delete(id);
       this.councilCleanupTimers.delete(id);
     }, RESULT_TTL_MS);
@@ -1352,7 +1361,18 @@ export class SessionManager {
         this.stopSession(sessionName).catch((err) => {
           console.error(`[SessionManager] Failed to stop ultraplan session '${sessionName}':`, err);
         });
-        setTimeout(() => this.ultraplans.delete(id), RESULT_TTL_MS);
+        setTimeout(() => {
+          // Abort if still running to prevent orphaned background tasks
+          const plan = this.ultraplans.get(id);
+          if (plan?.status === 'running') {
+            console.log(`[SessionManager] Ultraplan ${id} still running at TTL expiry — marking as error`);
+            plan.status = 'error';
+            plan.error = 'Timed out (TTL expired)';
+            plan.endTime = new Date().toISOString();
+            this.stopSession(sessionName).catch(() => {});
+          }
+          this.ultraplans.delete(id);
+        }, RESULT_TTL_MS);
       });
 
     return result;

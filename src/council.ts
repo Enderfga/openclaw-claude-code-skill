@@ -197,10 +197,26 @@ async function setupWorktrees(projectDir: string, agents: AgentPersona[]): Promi
         timeout: WORKTREE_CMD_TIMEOUT_MS,
       });
     } catch (err) {
+      // Best-effort cleanup: remove any worktrees already created in this batch
+      for (const [createdAgent, createdPath] of worktreeMap) {
+        await spawnAsync('git', ['-C', projectDir, 'worktree', 'remove', '--force', createdPath], {
+          timeout: GIT_CMD_TIMEOUT_MS,
+        }).catch((cleanupErr) => {
+          console.error(`[Council] Failed to cleanup worktree for ${createdAgent}:`, (cleanupErr as Error).message);
+        });
+      }
       throw new Error(`Failed to create worktree for ${agent.name} at ${wtDir}: ${(err as Error).message}`);
     }
 
     if (!fs.existsSync(wtDir)) {
+      // Best-effort cleanup on unexpected failure
+      for (const [createdAgent, createdPath] of worktreeMap) {
+        await spawnAsync('git', ['-C', projectDir, 'worktree', 'remove', '--force', createdPath], {
+          timeout: GIT_CMD_TIMEOUT_MS,
+        }).catch((cleanupErr) => {
+          console.error(`[Council] Failed to cleanup worktree for ${createdAgent}:`, (cleanupErr as Error).message);
+        });
+      }
       throw new Error(`Worktree directory not created: ${wtDir}`);
     }
     worktreeMap.set(agent.name, wtDir);
@@ -257,10 +273,16 @@ function buildAgentPrompt(
 
   // Build history with tail-first truncation (preserve reports and votes)
   let history = '';
-  if (previousResponses.length > 0) {
+  // Filter out empty responses so they don't pollute the collaboration history
+  const substantiveResponses = previousResponses.filter((resp) => {
+    const stripped = resp.content.replace(/^\[Agent completed[^\]]*\]\s*/i, '').trim();
+    return stripped.length > 0;
+  });
+
+  if (substantiveResponses.length > 0) {
     history = '\n\n## Previous Collaboration History\n\n';
     let currentRound = 0;
-    for (const resp of previousResponses) {
+    for (const resp of substantiveResponses) {
       if (resp.round !== currentRound) {
         currentRound = resp.round;
         history += `### Round ${currentRound}\n\n`;
