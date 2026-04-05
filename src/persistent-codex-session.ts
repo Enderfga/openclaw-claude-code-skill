@@ -25,7 +25,7 @@ import {
   type CostBreakdown,
   getModelPricing as _getModelPricingBase,
 } from './types.js';
-import { resolveAlias } from './models.js';
+import { resolveAlias, estimateTokens } from './models.js';
 
 import { MAX_HISTORY_ITEMS, DEFAULT_HISTORY_LIMIT, SESSION_EVENT } from './constants.js';
 
@@ -189,8 +189,8 @@ export class PersistentCodexSession extends EventEmitter implements ISession {
         // Rough token estimate: ~1 token per 4 chars.
         // Error margin: ~30% for English text, higher for code with long identifiers.
         // TODO(codex-cli): Replace with actual usage data when codex gains --usage output.
-        const estimatedOutputTokens = Math.ceil(stdout.length / 4);
-        const estimatedInputTokens = Math.ceil(message.length / 4);
+        const estimatedOutputTokens = estimateTokens(stdout);
+        const estimatedInputTokens = estimateTokens(message);
         this._stats.tokensIn += estimatedInputTokens;
         this._stats.tokensOut += estimatedOutputTokens;
         this._updateCost();

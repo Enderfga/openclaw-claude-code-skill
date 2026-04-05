@@ -24,7 +24,7 @@ import {
   type CostBreakdown,
   getModelPricing,
 } from './types.js';
-import { resolveAlias, getContextWindow } from './models.js';
+import { resolveAlias, getContextWindow, isClaudeModel } from './models.js';
 
 import {
   CONTEXT_HIGH_THRESHOLD,
@@ -141,11 +141,7 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
 
     // Model — proxy mode mapping
     if (this.options.model) {
-      const CLAUDE_PATTERNS = ['sonnet', 'opus', 'haiku', 'claude-', 'anthropic/', '/claude'];
-      const isClaudeModel = CLAUDE_PATTERNS.some(
-        (p) => this.options.model!.includes(p) || this.options.model!.startsWith(p),
-      );
-      if (!isClaudeModel && this.options.baseUrl) {
+      if (!isClaudeModel(this.options.model!) && this.options.baseUrl) {
         this._realModel = this.options.model;
         args.push('--model', 'opus');
       } else {
@@ -261,7 +257,7 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
     this.proc.stderr?.on('data', (data: Buffer) => {
       const sanitized = data
         .toString()
-        .replace(/sk-ant-[a-zA-Z0-9_-]+/g, 'sk-ant-***')
+        .replace(/sk-[a-zA-Z0-9_-]{10,}/g, 'sk-***')
         .replace(/ANTHROPIC_API_KEY=[^\s]+/g, 'ANTHROPIC_API_KEY=***')
         .replace(/OPENAI_API_KEY=[^\s]+/g, 'OPENAI_API_KEY=***')
         .replace(/GEMINI_API_KEY=[^\s]+/g, 'GEMINI_API_KEY=***')

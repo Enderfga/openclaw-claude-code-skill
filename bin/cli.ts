@@ -111,11 +111,23 @@ program
     if (opts.model) body.model = opts.model;
     if (opts.permissionMode) body.permissionMode = opts.permissionMode;
     if (opts.effort) body.effort = opts.effort;
-    if (opts.allowedTools) body.allowedTools = opts.allowedTools.split(',');
-    if (opts.disallowedTools) body.disallowedTools = opts.disallowedTools.split(',');
+    if (opts.allowedTools)
+      body.allowedTools = opts.allowedTools
+        .split(',')
+        .map((s: string) => s.trim())
+        .filter(Boolean);
+    if (opts.disallowedTools)
+      body.disallowedTools = opts.disallowedTools
+        .split(',')
+        .map((s: string) => s.trim())
+        .filter(Boolean);
     if (opts.resumeSessionId) body.resumeSessionId = opts.resumeSessionId;
     if (opts.baseUrl) body.baseUrl = opts.baseUrl;
-    if (opts.addDir) body.addDir = opts.addDir.split(',');
+    if (opts.addDir)
+      body.addDir = opts.addDir
+        .split(',')
+        .map((s: string) => s.trim())
+        .filter(Boolean);
     if (opts.enableAutoMode) body.enableAutoMode = true;
     if (opts.maxTurns) {
       const v = parseInt(opts.maxTurns);
@@ -148,10 +160,18 @@ program
     if (opts.worktree !== undefined) body.worktree = typeof opts.worktree === 'string' ? opts.worktree : true;
     if (opts.fallbackModel) body.fallbackModel = opts.fallbackModel;
     if (opts.jsonSchema) body.jsonSchema = opts.jsonSchema;
-    if (opts.mcpConfig) body.mcpConfig = opts.mcpConfig.split(',');
+    if (opts.mcpConfig)
+      body.mcpConfig = opts.mcpConfig
+        .split(',')
+        .map((s: string) => s.trim())
+        .filter(Boolean);
     if (opts.settings) body.settings = opts.settings;
     if (opts.skipPersistence) body.noSessionPersistence = true;
-    if (opts.betas) body.betas = opts.betas.split(',');
+    if (opts.betas)
+      body.betas = opts.betas
+        .split(',')
+        .map((s: string) => s.trim())
+        .filter(Boolean);
     if (opts.enableAgentTeams) body.enableAgentTeams = true;
 
     const result = await api('/session/start', 'POST', body);

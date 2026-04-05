@@ -2,9 +2,10 @@
  * Unit tests for centralized model registry
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   lookupModel,
+  lookupModelStrict,
   resolveAlias,
   resolveEngineAndModel,
   resolveProvider,
@@ -15,6 +16,7 @@ import {
   _resetPricingOverrides,
   isGeminiModel,
   isClaudeModel,
+  estimateTokens,
   getAliases,
 } from '../models.js';
 
@@ -188,9 +190,11 @@ describe('getModelPricing', () => {
   });
 
   it('falls back to default model for unknown', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const p = getModelPricing('unknown-model');
     // Should fall back to claude-sonnet-4-6
     expect(p.input).toBe(3);
+    warnSpy.mockRestore();
   });
 
   it('returns overridden pricing', () => {
@@ -222,5 +226,58 @@ describe('getAliases', () => {
     expect(aliases.opus).toBe('claude-opus-4-6');
     expect(aliases.sonnet).toBe('claude-sonnet-4-6');
     expect(aliases['gemini-pro']).toBe('gemini-3.1-pro-preview');
+  });
+});
+
+describe('lookupModelStrict', () => {
+  it('returns model for known id', () => {
+    const m = lookupModelStrict('claude-opus-4-6');
+    expect(m.id).toBe('claude-opus-4-6');
+    expect(m.engine).toBe('claude');
+  });
+
+  it('returns model for alias', () => {
+    const m = lookupModelStrict('opus');
+    expect(m.id).toBe('claude-opus-4-6');
+  });
+
+  it('throws for unknown model', () => {
+    expect(() => lookupModelStrict('nonexistent-model')).toThrow('Unknown model: nonexistent-model');
+  });
+});
+
+describe('estimateTokens', () => {
+  it('estimates ~1 token per 4 chars', () => {
+    expect(estimateTokens('abcd')).toBe(1);
+    expect(estimateTokens('abcde')).toBe(2);
+    expect(estimateTokens('12345678')).toBe(2);
+  });
+
+  it('returns 0 for empty string', () => {
+    expect(estimateTokens('')).toBe(0);
+  });
+
+  it('rounds up', () => {
+    expect(estimateTokens('a')).toBe(1);
+    expect(estimateTokens('ab')).toBe(1);
+    expect(estimateTokens('abc')).toBe(1);
+    expect(estimateTokens('abcd')).toBe(1);
+    expect(estimateTokens('abcde')).toBe(2);
+  });
+});
+
+describe('getModelPricing fallback warning', () => {
+  it('warns when falling back to defaults for unknown model', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    getModelPricing('totally-unknown-model');
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Unknown model "totally-unknown-model"'));
+    warnSpy.mockRestore();
+  });
+
+  it('does not warn for known models', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    getModelPricing('claude-opus-4-6');
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
   });
 });

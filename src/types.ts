@@ -17,6 +17,8 @@ export {
   getContextWindow,
   isGeminiModel,
   isClaudeModel,
+  estimateTokens,
+  lookupModelStrict,
   getAliases,
 } from './models.js';
 

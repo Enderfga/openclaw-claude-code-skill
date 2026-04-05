@@ -139,7 +139,7 @@ import {
   type UltrareviewResult,
   overrideModelPricing,
 } from './types.js';
-import { resolveAlias } from './models.js';
+import { resolveAlias, isClaudeModel } from './models.js';
 import { Council } from './council.js';
 import {
   PERSIST_DISK_TTL_MS,
@@ -281,11 +281,7 @@ export class SessionManager {
     this._checkCircuitBreaker(engine);
 
     if (engine === 'claude' && fullConfig.resolvedModel && !fullConfig.baseUrl) {
-      const CLAUDE_PATTERNS = ['sonnet', 'opus', 'haiku', 'claude-', 'anthropic/', '/claude'];
-      const isClaudeModel = CLAUDE_PATTERNS.some(
-        (p) => fullConfig.resolvedModel!.includes(p) || fullConfig.resolvedModel!.startsWith(p),
-      );
-      if (!isClaudeModel) {
+      if (!isClaudeModel(fullConfig.resolvedModel!)) {
         const proxyPort = await this._ensureProxyServer();
         if (proxyPort) {
           fullConfig.baseUrl = `http://127.0.0.1:${proxyPort}`;

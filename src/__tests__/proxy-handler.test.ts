@@ -1,0 +1,245 @@
+/**
+ * Unit tests for proxy/handler.ts — createProxyHandler
+ *
+ * Strategy: test through the exported createProxyHandler using mock
+ * HttpRequest/HttpResponse objects. We mock global fetch to avoid
+ * real network calls.
+ */
+
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { createProxyHandler, type ProxyEnv } from '../proxy/handler.js';
+
+// ─── Mock fetch ────────────────────────────────────────────────────────────
+
+const mockFetch = vi.fn<typeof globalThis.fetch>();
+vi.stubGlobal('fetch', mockFetch);
+
+// ─── Helpers ───────────────────────────────────────────────────────────────
+
+function makeReq(overrides: Partial<{ method: string; url: string; body: unknown }> = {}) {
+  return {
+    method: overrides.method || 'POST',
+    url: overrides.url || '/v1/messages',
+    headers: {} as Record<string, string>,
+    json: vi.fn().mockResolvedValue(overrides.body || {}),
+  };
+}
+
+function makeRes() {
+  const res = {
+    statusCode: 200,
+    headers: {} as Record<string, string>,
+    body: null as unknown,
+    written: [] as string[],
+    ended: false,
+    status(code: number) {
+      res.statusCode = code;
+      return res;
+    },
+    json(data: unknown) {
+      res.body = data;
+    },
+    setHeader(key: string, value: string) {
+      res.headers[key] = value;
+    },
+    write(data: string) {
+      res.written.push(data);
+    },
+    end() {
+      res.ended = true;
+    },
+    flushHeaders() {},
+  };
+  return res;
+}
+
+function makeAnthropicBody(model: string, stream = false) {
+  return {
+    model,
+    max_tokens: 1024,
+    messages: [{ role: 'user', content: 'Hello' }],
+    stream,
+  };
+}
+
+// ─── Tests ─────────────────────────────────────────────────────────────────
+
+describe('createProxyHandler', () => {
+  const env: ProxyEnv = {
+    anthropicApiKey: 'sk-ant-test-key',
+    openaiApiKey: 'sk-openai-test',
+    geminiApiKey: 'gemini-test-key',
+  };
+
+  let handler: ReturnType<typeof createProxyHandler>;
+
+  beforeEach(() => {
+    mockFetch.mockReset();
+    handler = createProxyHandler(undefined, env);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  describe('HEAD/GET probes', () => {
+    it('responds 200 to HEAD requests', async () => {
+      const req = makeReq({ method: 'HEAD' });
+      const res = makeRes();
+      const result = await handler(req as never, res as never);
+      expect(result).toBe(true);
+      expect(res.statusCode).toBe(200);
+      expect(res.body).toEqual({ status: 'ok' });
+    });
+
+    it('responds 200 to GET requests', async () => {
+      const req = makeReq({ method: 'GET' });
+      const res = makeRes();
+      const result = await handler(req as never, res as never);
+      expect(result).toBe(true);
+      expect(res.statusCode).toBe(200);
+    });
+  });
+
+  describe('model extraction from URL', () => {
+    it('extracts model from /real/<model>/v1/messages path', async () => {
+      // Mock the Anthropic passthrough
+      mockFetch.mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: 'msg_1', type: 'message', content: [], role: 'assistant' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+
+      const req = makeReq({
+        url: '/real/claude-sonnet-4-6/v1/messages',
+        body: makeAnthropicBody('claude-opus-4-6'),
+      });
+      const res = makeRes();
+      await handler(req as never, res as never);
+
+      // The fetch should be called with the URL model (claude-sonnet-4-6), not body model
+      // Since claude-sonnet-4-6 is an Anthropic model, it forwards to Anthropic
+      expect(mockFetch).toHaveBeenCalled();
+    });
+  });
+
+  describe('provider routing', () => {
+    it('forwards Anthropic models to Anthropic API', async () => {
+      mockFetch.mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: 'msg_1',
+            type: 'message',
+            content: [{ type: 'text', text: 'hi' }],
+            role: 'assistant',
+            stop_reason: 'end_turn',
+            usage: { input_tokens: 10, output_tokens: 5 },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      );
+
+      const req = makeReq({ body: makeAnthropicBody('claude-sonnet-4-6') });
+      const res = makeRes();
+      await handler(req as never, res as never);
+
+      expect(mockFetch).toHaveBeenCalled();
+      const fetchUrl = mockFetch.mock.calls[0][0] as string;
+      expect(fetchUrl).toContain('anthropic');
+    });
+
+    it('converts and forwards GPT models to OpenAI API', async () => {
+      mockFetch.mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: 'chatcmpl-1',
+            object: 'chat.completion',
+            choices: [{ index: 0, message: { role: 'assistant', content: 'hello' }, finish_reason: 'stop' }],
+            usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      );
+
+      const req = makeReq({ body: makeAnthropicBody('gpt-5.4') });
+      const res = makeRes();
+      await handler(req as never, res as never);
+
+      expect(mockFetch).toHaveBeenCalled();
+      const fetchUrl = mockFetch.mock.calls[0][0] as string;
+      expect(fetchUrl).toContain('openai.com');
+    });
+
+    it('converts and forwards Gemini models to Google API', async () => {
+      mockFetch.mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: 'chatcmpl-1',
+            object: 'chat.completion',
+            choices: [{ index: 0, message: { role: 'assistant', content: 'hello' }, finish_reason: 'stop' }],
+            usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      );
+
+      const req = makeReq({ body: makeAnthropicBody('gemini-2.5-pro') });
+      const res = makeRes();
+      await handler(req as never, res as never);
+
+      expect(mockFetch).toHaveBeenCalled();
+      const fetchUrl = mockFetch.mock.calls[0][0] as string;
+      expect(fetchUrl).toContain('generativelanguage.googleapis.com');
+    });
+
+    it('returns 401 when no API key for provider', async () => {
+      const noKeyHandler = createProxyHandler(undefined, {});
+      const req = makeReq({ body: makeAnthropicBody('gpt-5.4') });
+      const res = makeRes();
+      await noKeyHandler(req as never, res as never);
+
+      expect(res.statusCode).toBe(401);
+    });
+  });
+
+  describe('error handling', () => {
+    it('returns 500 on fetch failure', async () => {
+      mockFetch.mockRejectedValue(new Error('Network error'));
+
+      const req = makeReq({ body: makeAnthropicBody('gpt-5.4') });
+      const res = makeRes();
+      await handler(req as never, res as never);
+
+      expect(res.statusCode).toBe(500);
+      expect(res.body).toEqual(
+        expect.objectContaining({
+          type: 'error',
+          error: expect.objectContaining({ type: 'server_error' }),
+        }),
+      );
+    });
+
+    it('returns timeout message on AbortError', async () => {
+      const err = new Error('Timeout');
+      err.name = 'TimeoutError';
+      mockFetch.mockRejectedValue(err);
+
+      const req = makeReq({ body: makeAnthropicBody('gpt-5.4') });
+      const res = makeRes();
+      await handler(req as never, res as never);
+
+      expect(res.statusCode).toBe(500);
+      expect((res.body as Record<string, Record<string, string>>).error.message).toBe('Upstream request timed out');
+    });
+
+    it('handles JSON parse error from request body', async () => {
+      const req = makeReq();
+      req.json.mockRejectedValue(new Error('Invalid JSON'));
+      const res = makeRes();
+      await handler(req as never, res as never);
+
+      expect(res.statusCode).toBe(500);
+    });
+  });
+});

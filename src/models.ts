@@ -269,7 +269,10 @@ export function getModelPricing(model?: string, defaultModel = 'claude-sonnet-4-
   // Check overrides first
   const override = _pricingOverrides.get(clean);
   if (override) return override;
-  return lookupModel(clean)?.pricing ?? lookupModel(defaultModel)?.pricing ?? { input: 0, output: 0 };
+  const known = lookupModel(clean);
+  if (known) return known.pricing;
+  console.warn(`[models] Unknown model "${model}" — falling back to ${defaultModel} pricing`);
+  return lookupModel(defaultModel)?.pricing ?? { input: 0, output: 0 };
 }
 
 /** Mutable pricing table for runtime overrides (backward compat). */
@@ -321,4 +324,16 @@ export function isGeminiModel(model: string): boolean {
 export function isClaudeModel(model: string): boolean {
   const l = model.toLowerCase();
   return l.includes('claude') || l.includes('opus') || l.includes('sonnet') || l.includes('haiku');
+}
+
+/** Rough token estimate: ~4 chars per token. */
+export function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4);
+}
+
+/** Resolve a model string to its full definition. Throws for unknown models. */
+export function lookupModelStrict(idOrAlias: string): ModelDef {
+  const m = lookupModel(idOrAlias);
+  if (!m) throw new Error(`Unknown model: ${idOrAlias}`);
+  return m;
 }

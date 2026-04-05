@@ -28,7 +28,7 @@ import {
   type CostBreakdown,
   getModelPricing as _getModelPricingBase,
 } from './types.js';
-import { resolveAlias } from './models.js';
+import { resolveAlias, estimateTokens } from './models.js';
 
 import { MAX_HISTORY_ITEMS, DEFAULT_HISTORY_LIMIT, SESSION_EVENT } from './constants.js';
 
@@ -206,8 +206,8 @@ export class PersistentCursorSession extends EventEmitter implements ISession {
 
         // Fallback: estimate tokens if stream events didn't provide usage
         if (!gotUsageFromEvents && resultText.value.length > 0) {
-          this._stats.tokensIn += Math.ceil(message.length / 4);
-          this._stats.tokensOut += Math.ceil(resultText.value.length / 4);
+          this._stats.tokensIn += estimateTokens(message);
+          this._stats.tokensOut += estimateTokens(resultText.value);
           this._updateCost();
         }
 
