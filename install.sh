@@ -3,10 +3,7 @@
 # Usage: curl -fsSL https://raw.githubusercontent.com/Enderfga/openclaw-claude-code/main/install.sh | bash
 set -euo pipefail
 
-PLUGIN_NAME="openclaw-claude-code"
 NPM_PACKAGE="@enderfga/openclaw-claude-code"
-EXT_DIR="${HOME}/.openclaw/extensions"
-LINK_PATH="${EXT_DIR}/${PLUGIN_NAME}"
 CONFIG_FILE="${HOME}/.openclaw/openclaw.json"
 
 info()  { printf '\033[1;34m→\033[0m %s\n' "$*"; }
@@ -18,72 +15,84 @@ fail()  { printf '\033[1;31m✘\033[0m %s\n' "$*" >&2; exit 1; }
 command -v npm  >/dev/null 2>&1 || fail "npm not found. Install Node.js first: https://nodejs.org"
 command -v openclaw >/dev/null 2>&1 || fail "openclaw not found. Install OpenClaw first: https://docs.openclaw.ai"
 
-# ── Step 1: npm install ─────────────────────────────────
+# ── Step 1: npm global install ───────────────────────────
 info "Installing ${NPM_PACKAGE} via npm..."
 npm install -g "${NPM_PACKAGE}" --silent 2>&1 | tail -1
 
 PKG_PATH="$(npm root -g)/${NPM_PACKAGE}"
 [ -d "${PKG_PATH}" ] || fail "npm install succeeded but package not found at ${PKG_PATH}"
-ok "Installed $(node -e "console.log(require('${PKG_PATH}/package.json').version)")"
 
-# ── Step 2: Symlink into OpenClaw extensions ─────────────
-mkdir -p "${EXT_DIR}"
+VERSION="$(node -e "console.log(require('${PKG_PATH}/package.json').version)")"
+ok "Installed v${VERSION} at ${PKG_PATH}"
 
-if [ -L "${LINK_PATH}" ]; then
-    EXISTING="$(readlink "${LINK_PATH}")"
-    if [ "${EXISTING}" = "${PKG_PATH}" ]; then
-        ok "Symlink already correct"
-    else
-        info "Updating symlink (was → ${EXISTING})"
-        rm "${LINK_PATH}"
-        ln -s "${PKG_PATH}" "${LINK_PATH}"
-        ok "Symlink updated → ${PKG_PATH}"
-    fi
-elif [ -e "${LINK_PATH}" ]; then
-    warn "${LINK_PATH} exists but is not a symlink — skipping (remove it manually if needed)"
+# ── Step 2: Register in openclaw.json via plugins.load.paths ──
+if [ ! -f "${CONFIG_FILE}" ]; then
+    warn "openclaw.json not found at ${CONFIG_FILE}"
+    warn "Add this to your openclaw.json manually:"
+    echo ""
+    echo '  "plugins": { "load": { "paths": ["'"${PKG_PATH}"'"] } }'
+    echo ""
 else
-    ln -s "${PKG_PATH}" "${LINK_PATH}"
-    ok "Symlink created → ${PKG_PATH}"
-fi
-
-# ── Step 3: Add plugin entry to openclaw.json ────────────
-if [ -f "${CONFIG_FILE}" ]; then
-    if python3 -c "
+    info "Configuring openclaw.json..."
+    python3 -c "
 import json, sys
+
 with open('${CONFIG_FILE}') as f:
     cfg = json.load(f)
-entries = cfg.get('plugins', {}).get('entries', {})
-if '${PLUGIN_NAME}' in entries:
-    sys.exit(0)  # already configured
-sys.exit(1)
-" 2>/dev/null; then
-        ok "Plugin already configured in openclaw.json"
-    else
-        info "Adding plugin entry to openclaw.json..."
-        python3 -c "
-import json
-with open('${CONFIG_FILE}') as f:
-    cfg = json.load(f)
-cfg.setdefault('plugins', {}).setdefault('entries', {})['${PLUGIN_NAME}'] = {}
+
+plugins = cfg.setdefault('plugins', {})
+load = plugins.setdefault('load', {})
+paths = load.setdefault('paths', [])
+
+pkg_path = '${PKG_PATH}'
+
+# Check if already registered (exact match or different path to same package)
+already = False
+for p in paths:
+    if p == pkg_path:
+        already = True
+        break
+    # Also match if an existing path ends with the package name
+    if p.endswith('/openclaw-claude-code'):
+        print(f'Replacing existing path: {p}')
+        paths[paths.index(p)] = pkg_path
+        already = True
+        break
+
+if not already:
+    paths.append(pkg_path)
+
+# Remove stale entries.openclaw-claude-code if present (doesn't work without load.paths)
+entries = plugins.get('entries', {})
+if 'openclaw-claude-code' in entries:
+    del entries['openclaw-claude-code']
+    print('Removed stale plugins.entries.openclaw-claude-code')
+
 with open('${CONFIG_FILE}', 'w') as f:
     json.dump(cfg, f, indent=2)
     f.write('\n')
-" 2>/dev/null && ok "Plugin entry added to openclaw.json" \
-              || warn "Could not auto-configure — add \"${PLUGIN_NAME}\": {} to plugins.entries in openclaw.json"
-    fi
+" 2>&1 && ok "Plugin registered in plugins.load.paths" \
+         || { warn "Auto-configure failed. Add manually to openclaw.json:"; echo '  "plugins": { "load": { "paths": ["'"${PKG_PATH}"'"] } }'; }
+fi
+
+# ── Step 3: Restart gateway ──────────────────────────────
+echo ""
+info "Restarting OpenClaw gateway..."
+if openclaw gateway restart 2>&1 | grep -q "Restarted"; then
+    ok "Gateway restarted"
 else
-    warn "openclaw.json not found at ${CONFIG_FILE} — configure the plugin manually after setup"
+    warn "Gateway restart may have failed — try: openclaw gateway restart"
 fi
 
 # ── Step 4: Verify ───────────────────────────────────────
-echo ""
-info "Verifying installation..."
-if openclaw plugins list 2>/dev/null | grep -q "${PLUGIN_NAME}"; then
-    ok "openclaw-claude-code is loaded!"
+sleep 2
+info "Verifying..."
+if openclaw plugins list 2>/dev/null | grep -q "claude-code"; then
+    ok "openclaw-claude-code is loaded and ready!"
 else
-    warn "Plugin installed but not yet loaded — restart OpenClaw gateway: openclaw gateway restart"
+    warn "Plugin may need a moment to load. Check with: openclaw plugins list"
 fi
 
 echo ""
-ok "Done! Restart the gateway to activate: openclaw gateway restart"
+ok "Done! You now have claude_session_start, council_start, and 20+ coding agent tools."
 echo "  Docs: https://github.com/Enderfga/openclaw-claude-code"
