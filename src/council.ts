@@ -105,6 +105,17 @@ function spawnAsync(
 
 const VALID_AGENT_NAME = /^[a-zA-Z0-9_-]+$/;
 
+/** Best-effort cleanup of already-created worktrees when a batch creation fails */
+async function cleanupCreatedWorktrees(worktreeMap: Map<string, string>, projectDir: string): Promise<void> {
+  for (const [createdAgent, createdPath] of worktreeMap) {
+    await spawnAsync('git', ['-C', projectDir, 'worktree', 'remove', '--force', createdPath], {
+      timeout: GIT_CMD_TIMEOUT_MS,
+    }).catch((err) => {
+      console.error(`[Council] Failed to cleanup worktree for ${createdAgent}:`, (err as Error).message);
+    });
+  }
+}
+
 /** Set up git worktrees — one isolated directory per agent */
 async function setupWorktrees(projectDir: string, agents: AgentPersona[]): Promise<Map<string, string>> {
   const worktreeMap = new Map<string, string>();
@@ -197,26 +208,12 @@ async function setupWorktrees(projectDir: string, agents: AgentPersona[]): Promi
         timeout: WORKTREE_CMD_TIMEOUT_MS,
       });
     } catch (err) {
-      // Best-effort cleanup: remove any worktrees already created in this batch
-      for (const [createdAgent, createdPath] of worktreeMap) {
-        await spawnAsync('git', ['-C', projectDir, 'worktree', 'remove', '--force', createdPath], {
-          timeout: GIT_CMD_TIMEOUT_MS,
-        }).catch((cleanupErr) => {
-          console.error(`[Council] Failed to cleanup worktree for ${createdAgent}:`, (cleanupErr as Error).message);
-        });
-      }
+      await cleanupCreatedWorktrees(worktreeMap, projectDir);
       throw new Error(`Failed to create worktree for ${agent.name} at ${wtDir}: ${(err as Error).message}`);
     }
 
     if (!fs.existsSync(wtDir)) {
-      // Best-effort cleanup on unexpected failure
-      for (const [createdAgent, createdPath] of worktreeMap) {
-        await spawnAsync('git', ['-C', projectDir, 'worktree', 'remove', '--force', createdPath], {
-          timeout: GIT_CMD_TIMEOUT_MS,
-        }).catch((cleanupErr) => {
-          console.error(`[Council] Failed to cleanup worktree for ${createdAgent}:`, (cleanupErr as Error).message);
-        });
-      }
+      await cleanupCreatedWorktrees(worktreeMap, projectDir);
       throw new Error(`Worktree directory not created: ${wtDir}`);
     }
     worktreeMap.set(agent.name, wtDir);

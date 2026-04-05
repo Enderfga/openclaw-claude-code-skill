@@ -1362,14 +1362,13 @@ export class SessionManager {
           console.error(`[SessionManager] Failed to stop ultraplan session '${sessionName}':`, err);
         });
         setTimeout(() => {
-          // Abort if still running to prevent orphaned background tasks
+          // Mark as error if still running at TTL expiry
           const plan = this.ultraplans.get(id);
           if (plan?.status === 'running') {
             console.log(`[SessionManager] Ultraplan ${id} still running at TTL expiry — marking as error`);
             plan.status = 'error';
             plan.error = 'Timed out (TTL expired)';
             plan.endTime = new Date().toISOString();
-            this.stopSession(sessionName).catch(() => {});
           }
           this.ultraplans.delete(id);
         }, RESULT_TTL_MS);
