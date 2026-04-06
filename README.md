@@ -27,23 +27,7 @@ This project wraps coding CLIs and exposes their capabilities as a clean, tool-b
 curl -fsSL https://raw.githubusercontent.com/Enderfga/openclaw-claude-code/main/install.sh | bash
 ```
 
-This installs via npm, symlinks into OpenClaw extensions, and configures `openclaw.json` automatically.
-
-**Manual install:**
-
-```bash
-# 1. Install from npm
-npm install -g @enderfga/openclaw-claude-code
-
-# 2. Symlink into OpenClaw extensions
-ln -s $(npm root -g)/@enderfga/openclaw-claude-code ~/.openclaw/extensions/openclaw-claude-code
-
-# 3. Add to openclaw.json plugins.entries:
-#    "openclaw-claude-code": {}
-
-# 4. Restart gateway
-openclaw gateway restart
-```
+This installs via npm, registers the plugin in `openclaw.json`, and restarts the gateway automatically.
 
 **Standalone** (no OpenClaw):
 
