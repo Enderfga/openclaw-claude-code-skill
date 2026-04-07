@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.9.3] - 2026-04-07
+
+### Added
+- **Configurable session persistence path** — `persistencePath` and `persistenceTtlDays` added to `PluginConfig` for custom session persistence directory and TTL control (set to 0 to disable)
+
+### Changed
+- **JSDoc documentation** — Added comprehensive JSDoc comments to public API: `SessionManager` (34 methods), `PersistentClaudeSession` (15 members), and `types.ts` (21 key interfaces)
+
 ## [2.9.2] - 2026-04-05
 
 ### Fixed

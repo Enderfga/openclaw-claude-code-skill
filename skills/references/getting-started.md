@@ -103,6 +103,8 @@ In `~/.openclaw/openclaw.json`:
           "defaultEffort": "auto",
           "maxConcurrentSessions": 5,
           "sessionTtlMinutes": 120,
+          "persistencePath": "~/.openclaw",        // Custom dir for session persistence
+          "persistenceTtlDays": 7,                 // TTL in days (0 = disable persistence)
           "proxy": {
             "enabled": false,
             "bigModel": "gemini-3.1-pro-preview",
