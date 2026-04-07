@@ -298,6 +298,10 @@ export interface PluginConfig {
   proxy?: ProxyConfig;
   /** Override or extend model pricing at runtime without a new release. */
   pricingOverrides?: Record<string, Partial<ModelPricing>>;
+  /** Custom directory for session persistence files. Defaults to ~/.openclaw. */
+  persistencePath?: string;
+  /** TTL in days for persisted sessions on disk. Defaults to 7. Set to 0 to disable disk persistence. */
+  persistenceTtlDays?: number;
 }
 
 export interface ProxyConfig {

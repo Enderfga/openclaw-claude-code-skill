@@ -34,9 +34,6 @@ function getPluginVersion(): string {
 // ─── Persistence ─────────────────────────────────────────────────────────────
 
 const PERSIST_DIR = path.join(os.homedir(), '.openclaw');
-const PERSIST_FILE = path.join(PERSIST_DIR, 'claude-sessions.json');
-// PERSIST_DISK_TTL_MS imported from ./constants.js
-
 interface PersistedSession {
   name: string;
   claudeSessionId: string;
@@ -48,14 +45,15 @@ interface PersistedSession {
   lastActivity: number;
 }
 
-function loadPersistedSessions(): Map<string, PersistedSession> {
+function loadPersistedSessions(persistDir: string, persistTtlMs: number): Map<string, PersistedSession> {
+  const persistFile = path.join(persistDir, 'claude-sessions.json');
   try {
-    if (!fs.existsSync(PERSIST_FILE)) return new Map();
-    const raw = fs.readFileSync(PERSIST_FILE, 'utf8');
+    if (!fs.existsSync(persistFile)) return new Map();
+    const raw = fs.readFileSync(persistFile, 'utf8');
     const arr: PersistedSession[] = JSON.parse(raw);
     const now = Date.now();
     // Filter out entries older than disk TTL
-    const valid = arr.filter((s) => now - s.lastActivity < PERSIST_DISK_TTL_MS);
+    const valid = arr.filter((s) => now - s.lastActivity < persistTtlMs);
     return new Map(valid.map((s) => [s.name, s]));
   } catch {
     return new Map();
@@ -63,23 +61,25 @@ function loadPersistedSessions(): Map<string, PersistedSession> {
 }
 
 // Atomic write: write to .tmp then rename to avoid corrupt reads on crash
-function savePersistedSessions(sessions: Map<string, PersistedSession>): void {
+function savePersistedSessions(persistDir: string, sessions: Map<string, PersistedSession>): void {
   try {
-    fs.mkdirSync(PERSIST_DIR, { recursive: true });
+    const persistFile = path.join(persistDir, 'claude-sessions.json');
+    fs.mkdirSync(persistDir, { recursive: true });
     const arr = Array.from(sessions.values());
-    const tmp = PERSIST_FILE + '.tmp';
+    const tmp = persistFile + '.tmp';
     fs.writeFileSync(tmp, JSON.stringify(arr, null, 2));
-    fs.renameSync(tmp, PERSIST_FILE);
+    fs.renameSync(tmp, persistFile);
   } catch (err) {
     console.warn('[SessionManager] Failed to persist sessions:', (err as Error).message);
   }
 }
 
 // Async version for hot-path (sendMessage, TTL cleanup)
-function savePersistedSessionsAsync(sessions: Map<string, PersistedSession>): void {
+function savePersistedSessionsAsync(persistDir: string, sessions: Map<string, PersistedSession>): void {
+  const persistFile = path.join(persistDir, 'claude-sessions.json');
   const arr = Array.from(sessions.values());
-  const tmp = PERSIST_FILE + '.tmp';
-  fs.mkdir(PERSIST_DIR, { recursive: true }, (mkdirErr) => {
+  const tmp = persistFile + '.tmp';
+  fs.mkdir(persistDir, { recursive: true }, (mkdirErr) => {
     if (mkdirErr) {
       console.error('[SessionManager] Failed to create persist dir:', mkdirErr.message);
       return;
@@ -89,7 +89,7 @@ function savePersistedSessionsAsync(sessions: Map<string, PersistedSession>): vo
         console.error('[SessionManager] Failed to write session file:', writeErr.message);
         return;
       }
-      fs.rename(tmp, PERSIST_FILE, (renameErr) => {
+      fs.rename(tmp, persistFile, (renameErr) => {
         if (renameErr) {
           console.error('[SessionManager] Failed to rename session file:', renameErr.message);
           // Clean up orphan tmp file
@@ -190,6 +190,8 @@ export class SessionManager {
   private pluginConfig: PluginConfig;
   private persistedSessions: Map<string, PersistedSession>;
   private _debouncedSave: () => void;
+  private _persistDir: string;
+  private _persistTtlMs: number;
   private _proxyServer: http.Server | null = null;
   private _proxyPort: number | null = null;
   private _activePids = new Map<string, number>();
@@ -210,12 +212,16 @@ export class SessionManager {
       overrideModelPricing(config.pricingOverrides);
     }
 
+    // Persistence config
+    this._persistDir = config?.persistencePath || path.join(os.homedir(), '.openclaw');
+    this._persistTtlMs = (config?.persistenceTtlDays ?? 7) * 24 * 60 * 60 * 1000;
+
     // Load persisted session registry from disk
-    this.persistedSessions = loadPersistedSessions();
+    this.persistedSessions = loadPersistedSessions(this._persistDir, this._persistTtlMs);
     // Clean up orphaned child processes from a previous unclean exit
     this._cleanupOrphanedPids();
     // Debounced async writer — at most one write per 5 seconds on hot paths
-    this._debouncedSave = makeDebounced(() => savePersistedSessionsAsync(this.persistedSessions), DEBOUNCED_SAVE_MS);
+    this._debouncedSave = makeDebounced(() => savePersistedSessionsAsync(this._persistDir, this.persistedSessions), DEBOUNCED_SAVE_MS);
 
     // Start TTL cleanup timer
     this.cleanupTimer = setInterval(() => this._cleanupIdleSessions(), CLEANUP_INTERVAL_MS);
@@ -382,7 +388,7 @@ export class SessionManager {
     this._savePids();
     // Explicit stop = user intent to end session — remove from disk too
     this.persistedSessions.delete(name);
-    savePersistedSessions(this.persistedSessions);
+    savePersistedSessions(this._persistDir, this.persistedSessions);
   }
 
   listSessions(): SessionInfo[] {
@@ -847,7 +853,7 @@ export class SessionManager {
       this._proxyPort = null;
     }
     // Persist final state (TTL-expired sessions already removed by cleanup)
-    savePersistedSessions(this.persistedSessions);
+    savePersistedSessions(this._persistDir, this.persistedSessions);
   }
 
   // ─── Auto Proxy ───────────────────────────────────────────────────────
@@ -1635,18 +1641,18 @@ export class SessionManager {
         } catch {}
         this.sessions.delete(name);
         // NOTE: do NOT delete from persistedSessions — idle cleanup is
-        // in-memory only. Persisted entries survive for PERSIST_DISK_TTL_MS
+        // in-memory only. Persisted entries survive for configured TTL
         // (7 days) so the session can be resumed after a gateway restart.
       }
     }
     // Prune disk entries that exceeded the longer disk TTL
     let pruned = false;
     for (const [name, entry] of this.persistedSessions) {
-      if (now - entry.lastActivity > PERSIST_DISK_TTL_MS) {
+      if (now - entry.lastActivity > this._persistTtlMs) {
         this.persistedSessions.delete(name);
         pruned = true;
       }
     }
-    if (pruned) savePersistedSessionsAsync(this.persistedSessions);
+    if (pruned) savePersistedSessionsAsync(this._persistDir, this.persistedSessions);
   }
 }
