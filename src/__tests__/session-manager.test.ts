@@ -945,6 +945,9 @@ describe('SessionManager', () => {
     });
   });
 
+  
+);
+
   // ─── Constructor Config ─────────────────────────────────────────────
 
   describe('constructor config', () => {

@@ -45,7 +45,7 @@ interface PersistedSession {
   lastActivity: number;
 }
 
-function loadPersistedSessions(persistDir: string, persistTtlMs: number): Map<string, PersistedSession> {
+export function loadPersistedSessions(persistDir: string, persistTtlMs: number): Map<string, PersistedSession> {
   const persistFile = path.join(persistDir, 'claude-sessions.json');
   try {
     if (!fs.existsSync(persistFile)) return new Map();
@@ -61,7 +61,7 @@ function loadPersistedSessions(persistDir: string, persistTtlMs: number): Map<st
 }
 
 // Atomic write: write to .tmp then rename to avoid corrupt reads on crash
-function savePersistedSessions(persistDir: string, sessions: Map<string, PersistedSession>): void {
+export function savePersistedSessions(persistDir: string, sessions: Map<string, PersistedSession>): void {
   try {
     const persistFile = path.join(persistDir, 'claude-sessions.json');
     fs.mkdirSync(persistDir, { recursive: true });
@@ -75,7 +75,9 @@ function savePersistedSessions(persistDir: string, sessions: Map<string, Persist
 }
 
 // Async version for hot-path (sendMessage, TTL cleanup)
-function savePersistedSessionsAsync(persistDir: string, sessions: Map<string, PersistedSession>): void {
+export function savePersistedSessionsAsync(persistDir: string, sessions: Map<string, PersistedSession>): void {
+  // TTL=0 means disk persistence is disabled — skip all writes
+  if (persistDir === '') return;
   const persistFile = path.join(persistDir, 'claude-sessions.json');
   const arr = Array.from(sessions.values());
   const tmp = persistFile + '.tmp';
@@ -142,7 +144,6 @@ import {
 import { resolveAlias, isClaudeModel } from './models.js';
 import { Council } from './council.js';
 import {
-  PERSIST_DISK_TTL_MS,
   DEBOUNCED_SAVE_MS,
   CLEANUP_INTERVAL_MS,
   TURN_TIMEOUT_MS,
@@ -387,8 +388,9 @@ export class SessionManager {
     this._activePids.delete(name);
     this._savePids();
     // Explicit stop = user intent to end session — remove from disk too
+    // (skip if TTL=0 / disk persistence is disabled)
     this.persistedSessions.delete(name);
-    savePersistedSessions(this._persistDir, this.persistedSessions);
+    if (this._persistTtlMs !== 0) savePersistedSessions(this._persistDir, this.persistedSessions);
   }
 
   listSessions(): SessionInfo[] {
@@ -853,7 +855,8 @@ export class SessionManager {
       this._proxyPort = null;
     }
     // Persist final state (TTL-expired sessions already removed by cleanup)
-    savePersistedSessions(this._persistDir, this.persistedSessions);
+    // Skip if TTL=0 / disk persistence is disabled
+    if (this._persistTtlMs !== 0) savePersistedSessions(this._persistDir, this.persistedSessions);
   }
 
   // ─── Auto Proxy ───────────────────────────────────────────────────────
@@ -962,6 +965,8 @@ export class SessionManager {
 
   private _persistSession(name: string, managed: ManagedSession): void {
     if (!managed.claudeSessionId) return;
+    // TTL=0 means disk persistence is disabled — update in-memory map only, skip disk write
+    if (this._persistTtlMs === 0) return;
     const existing = this.persistedSessions.get(name);
     this.persistedSessions.set(name, {
       name,
@@ -978,13 +983,11 @@ export class SessionManager {
 
   // ─── PID Tracking ──────────────────────────────────────────────────────
 
-  private static PID_FILE = path.join(os.homedir(), '.openclaw', 'session-pids.json');
-
   private _savePids(): void {
     try {
-      const dir = path.dirname(SessionManager.PID_FILE);
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(SessionManager.PID_FILE, JSON.stringify(Object.fromEntries(this._activePids)));
+      if (!fs.existsSync(this._persistDir)) fs.mkdirSync(this._persistDir, { recursive: true });
+      const pidFile = path.join(this._persistDir, 'session-pids.json');
+      fs.writeFileSync(pidFile, JSON.stringify(Object.fromEntries(this._activePids)));
     } catch {
       /* best effort */
     }
@@ -1017,8 +1020,9 @@ export class SessionManager {
 
   private _cleanupOrphanedPids(): void {
     try {
-      if (!fs.existsSync(SessionManager.PID_FILE)) return;
-      const data = JSON.parse(fs.readFileSync(SessionManager.PID_FILE, 'utf8')) as Record<string, number>;
+      const pidFile = path.join(this._persistDir, 'session-pids.json');
+      if (!fs.existsSync(pidFile)) return;
+      const data = JSON.parse(fs.readFileSync(pidFile, 'utf8')) as Record<string, number>;
       for (const [name, pid] of Object.entries(data)) {
         try {
           process.kill(pid, 0); // check if alive
