@@ -497,7 +497,7 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
    * Send a message to the session and wait for a response.
    * @param message - Message text to send
    * @param options - Optional send settings (stream, effort, etc.)
-   * @returns Send result with reply text, events, and stats
+   * @returns TurnResult (text + event) or { requestId, sent } if waitForComplete is false
    */
   async send(
     message: string | unknown[],

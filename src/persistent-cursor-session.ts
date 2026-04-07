@@ -9,6 +9,8 @@
  *   - Working directory carries accumulated code changes across sends
  *   - Stats, history, and cost are tracked continuously
  *   - Consistent lifecycle semantics (start/stop/pause/resume)
+ *
+ * @see ISession
  */
 
 import { spawn, ChildProcess } from 'node:child_process';
@@ -71,22 +73,30 @@ export class PersistentCursorSession extends EventEmitter implements ISession {
     };
   }
 
+  /** Process ID of the underlying Cursor CLI subprocess, or undefined if not started. */
   get pid(): number | undefined {
     return this.currentProc?.pid ?? undefined;
   }
 
+  /** Whether the session has authenticated and is ready to receive messages. */
   get isReady(): boolean {
     return this._isReady;
   }
+  /** Whether message processing is paused. */
   get isPaused(): boolean {
     return this._isPaused;
   }
+  /** Whether the session is currently processing a message. */
   get isBusy(): boolean {
     return this._isBusy;
   }
 
   // ─── Start ───────────────────────────────────────────────────────────────
 
+  /**
+   * Start the Cursor session and initialize the working directory.
+   * @returns This session instance
+   */
   async start(): Promise<this> {
     if (this.options.cwd) {
       this.options.cwd = path.resolve(this.options.cwd);
@@ -105,6 +115,12 @@ export class PersistentCursorSession extends EventEmitter implements ISession {
 
   // ─── Send ────────────────────────────────────────────────────────────────
 
+  /**
+   * Send a message to the session and wait for a response.
+   * @param message - Message text to send
+   * @param options - Optional send settings
+   * @returns TurnResult (text + event) or { requestId, sent } if waitForComplete is false
+   */
   async send(
     message: string | unknown[],
     options: SessionSendOptions = {},
@@ -341,6 +357,10 @@ export class PersistentCursorSession extends EventEmitter implements ISession {
 
   // ─── Utilities ───────────────────────────────────────────────────────────
 
+  /**
+   * Get runtime statistics for this session.
+   * @returns Stats including message count, token usage, cost, and uptime
+   */
   getStats(): SessionStats & { sessionId?: string; uptime: number } {
     return {
       turns: this._stats.turns,
@@ -359,22 +379,44 @@ export class PersistentCursorSession extends EventEmitter implements ISession {
     };
   }
 
+  /**
+   * Get the recent message history for this session.
+   * @param limit - Maximum number of history items to return (default: DEFAULT_HISTORY_LIMIT)
+   * @returns Array of history entries with timestamp, type, and event data
+   */
   getHistory(limit = DEFAULT_HISTORY_LIMIT): Array<{ time: string; type: string; event: unknown }> {
     return this._history.slice(-limit);
   }
 
+  /**
+   * Request context compaction — no-op for Cursor since it does not support compaction.
+   * @param _summary - Optional summary to use for compaction (ignored)
+   * @returns TurnResult indicating compaction is not supported
+   */
   async compact(_summary?: string): Promise<TurnResult> {
     const event: StreamEvent = { type: 'result', result: 'Cursor engine does not support compaction' };
     return { text: event.result as string, event };
   }
 
+  /**
+   * Get the current effort level for this session.
+   * @returns Current effort level
+   */
   getEffort(): EffortLevel {
     return this.options.effort || 'auto';
   }
+  /**
+   * Set the effort level for this session.
+   * @param level - Effort level (auto, medium, high)
+   */
   setEffort(level: EffortLevel): void {
     this.options.effort = level;
   }
 
+  /**
+   * Get accumulated cost for this session.
+   * @returns Cost breakdown by category
+   */
   getCost(): CostBreakdown {
     const pricing = getModelPricing(this.options.model);
     const cachedPrice = pricing.cached ?? 0;
@@ -394,19 +436,33 @@ export class PersistentCursorSession extends EventEmitter implements ISession {
     };
   }
 
+  /**
+   * Resolve a model alias to its full model string.
+   * @param alias - Model alias (e.g. "cursor-default")
+   * @returns Resolved model string
+   */
   resolveModel(alias: string): string {
     return resolveAlias(alias);
   }
 
+  /**
+   * Pause message processing.
+   */
   pause(): void {
     this._isPaused = true;
     this.emit(SESSION_EVENT.PAUSED, { sessionId: this.sessionId });
   }
+  /**
+   * Resume message processing from paused state.
+   */
   resume(): void {
     this._isPaused = false;
     this.emit(SESSION_EVENT.RESUMED, { sessionId: this.sessionId });
   }
 
+  /**
+   * Stop the session and terminate the Cursor CLI process.
+   */
   stop(): void {
     if (this._currentRl) {
       this._currentRl.close();
