@@ -38,7 +38,7 @@ export type EngineType = 'claude' | 'codex' | 'gemini' | 'cursor';
 // ─── Session Config ──────────────────────────────────────────────────────────
 
 /**
- * Configuration for starting a new Claude Code session.
+ * Configuration for starting a new session (Claude, Codex, Gemini, or Cursor).
  * Most fields are optional — defaults are supplied by the plugin.
  */
 export interface SessionConfig {

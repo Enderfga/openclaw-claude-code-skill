@@ -224,8 +224,8 @@ export class SessionManager {
   // ─── Session Lifecycle ─────────────────────────────────────────────────
 
   /**
-   * Start a new or resumed Claude session.
-   * @param config - Session configuration (name, model, cwd, allowedTools, etc.)
+   * Start a new or resumed session (Claude, Codex, Gemini, or Cursor).
+   * @param config - Session configuration (name, model, cwd, allowedTools, engine, etc.)
    * @returns Session info including name, status, and model
    */
   async startSession(config: Partial<SessionConfig> & { name?: string }): Promise<SessionInfo> {
@@ -337,7 +337,7 @@ export class SessionManager {
    * @param name - Session name
    * @param message - Message text to send
    * @param options - Optional send settings (stream, effort, etc.)
-   * @returns Send result including ok status, reply text, and stats
+   * @returns Send result including output text, optional sessionId, and events
    */
   async sendMessage(name: string, message: string, options: SendOptions = {}): Promise<SendResult> {
     const managed = this._getSession(name);
@@ -434,7 +434,9 @@ export class SessionManager {
 
   /**
    * Search session message history with a regex pattern.
-   * @param config - Search config with name, pattern, and options
+   * @param name - Session name
+   * @param pattern - Regex pattern to search for
+   * @param limit - Maximum number of results to return
    * @returns Array of matching line + context
    */
   async grepSession(
@@ -477,11 +479,6 @@ export class SessionManager {
   }
 
   /**
-   * Switch model for a session.
-   * Updates in-memory config only (takes effect on next restart/resume).
-   * For immediate effect, call restartWithConfig() explicitly.
-   */
-  /**
    * Set the default model for a session (config only, no restart).
    * @param name - Session name
    * @param model - Model string (e.g. "claude-3-5-sonnet-latest")
@@ -494,17 +491,14 @@ export class SessionManager {
   }
 
   /**
-   * Switch model immediately by restarting the session with --resume.
-   * Conversation history is preserved via the claude session ID.
+   * Switch model by stopping and restarting the session with a new model.
+   * Preserves conversation history via --resume.
    *
    * Guards:
    * - Rejects if session is currently processing a message (busy guard)
    * - Validates model string against known aliases before restarting
    * - Rolls back to old session if startSession fails
-   */
-  /**
-   * Switch model by stopping and restarting the session with a new model.
-   * Preserves conversation history via --resume.
+   *
    * @param name - Session name
    * @param model - New model string
    * @returns Updated session info
@@ -684,7 +678,7 @@ export class SessionManager {
 
   /**
    * List available skills in a directory.
-   * @param cwd - Working directory to search (defaults to cwd)
+   * @param cwd - Working directory to search (defaults to homedir)
    * @returns Array of skill info objects
    */
   listSkills(cwd?: string): SkillInfo[] {
@@ -736,7 +730,7 @@ export class SessionManager {
 
   /**
    * List available .claude/ rules in a directory.
-   * @param cwd - Working directory to search (defaults to cwd)
+   * @param cwd - Working directory to search (defaults to homedir)
    * @returns Array of rule info objects
    */
   listRules(cwd?: string): RuleInfo[] {
@@ -769,8 +763,8 @@ export class SessionManager {
   /**
    * Create a new .claude/rules/ rule file.
    * @param name - Rule name
-   * @param content - Rule content
-   * @param cwd - Working directory
+   * @param cwd - Working directory (defaults to homedir)
+   * @param opts - Rule options (description, content, paths, condition)
    */
   createRule(
     name: string,
