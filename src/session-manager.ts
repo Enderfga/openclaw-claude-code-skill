@@ -223,6 +223,11 @@ export class SessionManager {
 
   // ─── Session Lifecycle ─────────────────────────────────────────────────
 
+  /**
+   * Start a new or resumed Claude session.
+   * @param config - Session configuration (name, model, cwd, allowedTools, etc.)
+   * @returns Session info including name, status, and model
+   */
   async startSession(config: Partial<SessionConfig> & { name?: string }): Promise<SessionInfo> {
     const name = config.name || `session-${Date.now()}`;
 
@@ -327,6 +332,13 @@ export class SessionManager {
     return this._toSessionInfo(name, managed);
   }
 
+  /**
+   * Send a message to an active session and wait for the response.
+   * @param name - Session name
+   * @param message - Message text to send
+   * @param options - Optional send settings (stream, effort, etc.)
+   * @returns Send result including ok status, reply text, and stats
+   */
   async sendMessage(name: string, message: string, options: SendOptions = {}): Promise<SendResult> {
     const managed = this._getSession(name);
     managed.lastActivity = Date.now();
@@ -373,6 +385,10 @@ export class SessionManager {
     return { output: '', sessionId: managed.claudeSessionId, events: [] };
   }
 
+  /**
+   * Stop a running session and terminate its Claude CLI process.
+   * @param name - Session name to stop
+   */
   async stopSession(name: string): Promise<void> {
     const managed = this._getSession(name);
     managed.session.stop();
@@ -385,14 +401,27 @@ export class SessionManager {
     savePersistedSessions(this.persistedSessions);
   }
 
+  /**
+   * List all active (in-memory) sessions.
+   * @returns Array of session info objects
+   */
   listSessions(): SessionInfo[] {
     return Array.from(this.sessions.entries()).map(([name, managed]) => this._toSessionInfo(name, managed));
   }
 
+  /**
+   * List all persisted sessions from the registry file.
+   * @returns Array of persisted session records
+   */
   listPersistedSessions(): PersistedSession[] {
     return Array.from(this.persistedSessions.values());
   }
 
+  /**
+   * Get current status of a session including stats.
+   * @param name - Session name
+   * @returns Session info merged with runtime stats
+   */
   getStatus(name: string): SessionInfo & { stats: ReturnType<ISession['getStats']> } {
     const managed = this._getSession(name);
     return {
@@ -403,6 +432,11 @@ export class SessionManager {
 
   // ─── Session Operations ────────────────────────────────────────────────
 
+  /**
+   * Search session message history with a regex pattern.
+   * @param config - Search config with name, pattern, and options
+   * @returns Array of matching line + context
+   */
   async grepSession(
     name: string,
     pattern: string,
@@ -421,11 +455,21 @@ export class SessionManager {
       }));
   }
 
+  /**
+   * Compact session context to free up context window space.
+   * @param name - Session name
+   * @param summary - Optional summary text to summarize conversation around
+   */
   async compactSession(name: string, summary?: string): Promise<void> {
     const managed = this._getSession(name);
     await managed.session.compact(summary);
   }
 
+  /**
+   * Set the effort level for an active session.
+   * @param name - Session name
+   * @param level - Effort level (auto, medium, high)
+   */
   setEffort(name: string, level: EffortLevel): void {
     const managed = this._getSession(name);
     managed.session.setEffort(level);
@@ -436,6 +480,11 @@ export class SessionManager {
    * Switch model for a session.
    * Updates in-memory config only (takes effect on next restart/resume).
    * For immediate effect, call restartWithConfig() explicitly.
+   */
+  /**
+   * Set the default model for a session (config only, no restart).
+   * @param name - Session name
+   * @param model - Model string (e.g. "claude-3-5-sonnet-latest")
    */
   setModel(name: string, model: string): void {
     const managed = this._getSession(name);
@@ -452,6 +501,13 @@ export class SessionManager {
    * - Rejects if session is currently processing a message (busy guard)
    * - Validates model string against known aliases before restarting
    * - Rolls back to old session if startSession fails
+   */
+  /**
+   * Switch model by stopping and restarting the session with a new model.
+   * Preserves conversation history via --resume.
+   * @param name - Session name
+   * @param model - New model string
+   * @returns Updated session info
    */
   async switchModel(name: string, model: string): Promise<SessionInfo> {
     const managed = this._getSession(name);
@@ -510,6 +566,12 @@ export class SessionManager {
    * - Rejects if session is busy
    * - Rolls back to old session if startSession fails
    * - merge:true adds tools; removeTools removes specific tools from the list
+   */
+  /**
+   * Update allowed/disallowed tools for a session, restarting the process.
+   * @param name - Session name
+   * @param opts - Tool options (allowedTools, disallowedTools, merge, removeTools)
+   * @returns Updated session info
    */
   async updateTools(
     name: string,
@@ -574,6 +636,11 @@ export class SessionManager {
     }
   }
 
+  /**
+   * Get accumulated cost for a session.
+   * @param name - Session name
+   * @returns Cost summary or null if session not found
+   */
   getCost(name: string) {
     const managed = this._getSession(name);
     return managed.session.getCost();
@@ -581,6 +648,11 @@ export class SessionManager {
 
   // ─── Agent/Skill/Rule Management ──────────────────────────────────────
 
+  /**
+   * List available Claude Code agents in a directory.
+   * @param cwd - Working directory to search (defaults to cwd)
+   * @returns Array of agent info objects
+   */
   listAgents(cwd?: string): AgentInfo[] {
     const safeCwd = sanitizeCwd(cwd);
     const projectDir = path.join(safeCwd || os.homedir(), '.claude', 'agents');
@@ -591,6 +663,14 @@ export class SessionManager {
     return [...project, ...global.filter((a) => !seen.has(a.name))];
   }
 
+  /**
+   * Create a new Claude Code agent definition.
+   * @param name - Agent name
+   * @param cwd - Working directory
+   * @param description - Optional agent description
+   * @param prompt - Optional system prompt override
+   * @returns Agent name
+   */
   createAgent(name: string, cwd?: string, description?: string, prompt?: string): string {
     validateName(name);
     const safeCwd = sanitizeCwd(cwd);
@@ -602,6 +682,11 @@ export class SessionManager {
     return filePath;
   }
 
+  /**
+   * List available skills in a directory.
+   * @param cwd - Working directory to search (defaults to cwd)
+   * @returns Array of skill info objects
+   */
   listSkills(cwd?: string): SkillInfo[] {
     const safeCwd = sanitizeCwd(cwd);
     const dirs = [
@@ -628,6 +713,13 @@ export class SessionManager {
     return all;
   }
 
+  /**
+   * Create a new skill definition file.
+   * @param name - Skill name
+   * @param cwd - Working directory
+   * @param opts - Skill options (description, prompt, trigger)
+   * @returns Skill name
+   */
   createSkill(name: string, cwd?: string, opts?: { description?: string; prompt?: string; trigger?: string }): string {
     validateName(name);
     const safeCwd = sanitizeCwd(cwd);
@@ -642,6 +734,11 @@ export class SessionManager {
     return filePath;
   }
 
+  /**
+   * List available .claude/ rules in a directory.
+   * @param cwd - Working directory to search (defaults to cwd)
+   * @returns Array of rule info objects
+   */
   listRules(cwd?: string): RuleInfo[] {
     const safeCwd = sanitizeCwd(cwd);
     const dirs = [path.join(safeCwd || os.homedir(), '.claude', 'rules'), path.join(os.homedir(), '.claude', 'rules')];
@@ -669,6 +766,12 @@ export class SessionManager {
     return all;
   }
 
+  /**
+   * Create a new .claude/rules/ rule file.
+   * @param name - Rule name
+   * @param content - Rule content
+   * @param cwd - Working directory
+   */
   createRule(
     name: string,
     cwd?: string,
@@ -690,6 +793,11 @@ export class SessionManager {
 
   // ─── Agent Teams ───────────────────────────────────────────────────────
 
+  /**
+   * List teammates in an agent team session.
+   * @param name - Team session name
+   * @returns Comma-separated list of teammate names
+   */
   async teamList(name: string): Promise<string> {
     const managed = this._getSession(name);
     const engine = managed.config.engine || 'claude';
@@ -714,6 +822,13 @@ export class SessionManager {
       : 'No other active sessions';
   }
 
+  /**
+   * Send a message to a specific teammate in a team session.
+   * @param name - Team session name
+   * @param teammate - Teammate name
+   * @param message - Message text
+   * @returns Send result
+   */
   async teamSend(name: string, teammate: string, message: string): Promise<SendResult> {
     const managed = this._getSession(name);
     const engine = managed.config.engine || 'claude';
@@ -752,6 +867,10 @@ export class SessionManager {
    * Returns an overview of all active sessions — analogous to a dashboard.
    * Unlike claude_session_status (single session), this gives the aggregate
    * view: how many sessions are running, which are busy, total uptime, etc.
+   */
+  /**
+   * Return basic health status of the plugin.
+   * @returns Health info including active session count and version
    */
   health(): {
     ok: boolean;
@@ -805,6 +924,10 @@ export class SessionManager {
   }
 
   /** Return plugin version from package.json */
+  /**
+   * Return plugin version from package.json.
+   * @returns Version string
+   */
   getVersion(): string {
     return getPluginVersion();
   }
@@ -820,6 +943,9 @@ export class SessionManager {
    * 4. Persists final session registry to disk
    *
    * After shutdown(), no new sessions can be started. Idempotent.
+   */
+  /**
+   * Gracefully shutdown: stop all sessions and clear timers.
    */
   async shutdown(): Promise<void> {
     if (this.cleanupTimer) {
@@ -1145,6 +1271,12 @@ export class SessionManager {
   private councils = new Map<string, Council>();
   private councilCleanupTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
+  /**
+   * Start a multi-agent council that collaborates on a task.
+   * @param task - Task description for the council
+   * @param config - Council configuration
+   * @returns Council session with id and task info
+   */
   councilStart(task: string, config: CouncilConfig): CouncilSession {
     const council = new Council(config, this);
     const initialSession = council.init(task);
@@ -1188,11 +1320,20 @@ export class SessionManager {
     this.councilCleanupTimers.set(id, timer);
   }
 
+  /**
+   * Get the status of a running council session.
+   * @param id - Council session id
+   * @returns Council session info or undefined
+   */
   councilStatus(id: string): CouncilSession | undefined {
     const council = this.councils.get(id);
     return council?.getSession();
   }
 
+  /**
+   * Abort a running council session.
+   * @param id - Council session id
+   */
   councilAbort(id: string): void {
     const council = this.councils.get(id);
     if (!council) throw new Error(`Council '${id}' not found`);
@@ -1200,12 +1341,22 @@ export class SessionManager {
     this.councils.delete(id);
   }
 
+  /**
+   * Inject a user message into the next round of a running council.
+   * @param id - Council session id
+   * @param message - Message to inject
+   */
   councilInject(id: string, message: string): void {
     const council = this.councils.get(id);
     if (!council) throw new Error(`Council '${id}' not found`);
     council.injectMessage(message);
   }
 
+  /**
+   * Review a completed council session and return findings.
+   * @param id - Council session id
+   * @returns Review result with changed files and agent summaries
+   */
   async councilReview(id: string): Promise<CouncilReviewResult> {
     const council = this.councils.get(id);
     if (!council) throw new Error(`Council '${id}' not found`);
@@ -1213,6 +1364,10 @@ export class SessionManager {
     return council.review();
   }
 
+  /**
+   * Accept and finalize council work, cleaning up scaffolding.
+   * @param id - Council session id
+   */
   async councilAccept(id: string): Promise<CouncilAcceptResult> {
     const council = this.councils.get(id);
     if (!council) throw new Error(`Council '${id}' not found`);
@@ -1222,6 +1377,11 @@ export class SessionManager {
     return result;
   }
 
+  /**
+   * Reject council work and provide feedback for retry.
+   * @param id - Council session id
+   * @param feedback - Rejection feedback
+   */
   async councilReject(id: string, feedback: string): Promise<CouncilRejectResult> {
     const council = this.councils.get(id);
     if (!council) throw new Error(`Council '${id}' not found`);
@@ -1241,6 +1401,13 @@ export class SessionManager {
    * Send a message from one session to another.
    * If the target is idle, the message is delivered as a user turn.
    * If the target is busy, it's queued in the inbox for later delivery.
+   */
+  /**
+   * Send a message from one session to another.
+   * @param from - Source session name
+   * @param to - Target session name
+   * @param message - Message text
+   * @param summary - Short preview for delivery
    */
   async sessionSendTo(
     from: string,
@@ -1313,12 +1480,23 @@ export class SessionManager {
   }
 
   /** Read inbox messages for a session */
+  /**
+   * Read inbox messages for a session.
+   * @param name - Session name
+   * @param unreadOnly - Only return unread messages (default true)
+   * @returns Array of inbox messages
+   */
   sessionInbox(name: string, unreadOnly = true): InboxMessage[] {
     const inbox = this.inboxes.get(name) || [];
     return unreadOnly ? inbox.filter((m) => !m.read) : inbox;
   }
 
   /** Deliver all queued messages to an idle session, then clear */
+  /**
+   * Deliver all queued inbox messages to an idle session.
+   * @param name - Session name
+   * @returns Number of messages delivered
+   */
   async sessionDeliverInbox(name: string): Promise<number> {
     const managed = this._getSession(name);
     const inbox = this.inboxes.get(name);
@@ -1338,6 +1516,12 @@ export class SessionManager {
   // ─── Ultraplan ────────────────────────────────────────────────────────
 
   private ultraplans = new Map<string, UltraplanResult>();
+  /**
+   * Start an Ultraplan dedicated Opus planning session.
+   * @param task - Task to plan
+   * @param opts - Optional model, cwd, and timeout overrides
+   * @returns Ultraplan result with id and task info
+   */
   ultraplanStart(task: string, opts?: { model?: string; cwd?: string; timeout?: number }): UltraplanResult {
     const id = `ultraplan-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const sessionName = `ultraplan-${id}`;
@@ -1420,6 +1604,11 @@ export class SessionManager {
     result.endTime = new Date().toISOString();
   }
 
+  /**
+   * Get status of an Ultraplan session.
+   * @param id - Ultraplan id
+   * @returns Ultraplan result or undefined
+   */
   ultraplanStatus(id: string): UltraplanResult | undefined {
     return this.ultraplans.get(id);
   }
@@ -1428,6 +1617,11 @@ export class SessionManager {
 
   private ultrareviews = new Map<string, UltrareviewResult>();
   private ultrareviewPollers = new Map<string, ReturnType<typeof setInterval>>();
+  /**
+   * Start an Ultrareview — fleet of bug-hunting agents.
+   * @param opts - Review options including cwd, focus, and model
+   * @returns Ultrareview result with id
+   */
   ultrareviewStart(
     cwd: string,
     opts?: { agentCount?: number; maxDurationMinutes?: number; model?: string; focus?: string },

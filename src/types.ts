@@ -37,6 +37,10 @@ export type EngineType = 'claude' | 'codex' | 'gemini' | 'cursor';
 
 // ─── Session Config ──────────────────────────────────────────────────────────
 
+/**
+ * Configuration for starting a new Claude Code session.
+ * Most fields are optional — defaults are supplied by the plugin.
+ */
 export interface SessionConfig {
   name: string;
   cwd: string;
@@ -86,6 +90,9 @@ export interface SessionConfig {
 
 // ─── Session Stats ───────────────────────────────────────────────────────────
 
+/**
+ * Runtime statistics for an active session.
+ */
 export interface SessionStats {
   turns: number;
   toolCalls: number;
@@ -118,6 +125,9 @@ export interface HookConfig {
 
 // ─── Active Session ──────────────────────────────────────────────────────────
 
+/**
+ * An active in-memory session managed by SessionManager.
+ */
 export interface ActiveSession {
   config: SessionConfig;
   claudeSessionId?: string;
@@ -131,6 +141,9 @@ export interface ActiveSession {
 
 // ─── Send Options ────────────────────────────────────────────────────────────
 
+/**
+ * Options for sending a message to a session.
+ */
 export interface SendOptions {
   effort?: EffortLevel;
   plan?: boolean;
@@ -143,6 +156,9 @@ export interface SendOptions {
 
 // ─── Stream Events ───────────────────────────────────────────────────────────
 
+/**
+ * A stream event received from the Claude CLI.
+ */
 export interface StreamEvent {
   type: string;
   subtype?: string;
@@ -164,6 +180,9 @@ export interface StreamEvent {
 
 // ─── Results ─────────────────────────────────────────────────────────────────
 
+/**
+ * Summary info about a session (returned to API callers).
+ */
 export interface SessionInfo {
   name: string;
   claudeSessionId?: string;
@@ -174,6 +193,9 @@ export interface SessionInfo {
   stats: SessionStats;
 }
 
+/**
+ * Result of sending a message to a session.
+ */
 export interface SendResult {
   output: string;
   sessionId?: string;
@@ -181,24 +203,36 @@ export interface SendResult {
   events: StreamEvent[];
 }
 
+/**
+ * A single match from session history grep.
+ */
 export interface GrepMatch {
   time: string;
   type: string;
   content: string;
 }
 
+/**
+ * Info about a Claude Code agent definition.
+ */
 export interface AgentInfo {
   name: string;
   file: string;
   description: string;
 }
 
+/**
+ * Info about a skill definition.
+ */
 export interface SkillInfo {
   name: string;
   hasSkillMd: boolean;
   description: string;
 }
 
+/**
+ * Info about a .claude/rules/ rule file.
+ */
 export interface RuleInfo {
   name: string;
   file: string;
@@ -228,6 +262,9 @@ export interface TurnResult {
   event: StreamEvent;
 }
 
+/**
+ * Accumulated cost for a session across categories.
+ */
 export interface CostBreakdown {
   model: string;
   tokensIn: number;
@@ -288,6 +325,9 @@ export interface ISession {
 
 // ─── Plugin Config ───────────────────────────────────────────────────────────
 
+/**
+ * Plugin-level configuration supplied to SessionManager constructor.
+ */
 export interface PluginConfig {
   claudeBin: string;
   defaultModel?: string;
@@ -308,6 +348,9 @@ export interface ProxyConfig {
 
 // ─── Inbox Types ────────────────────────────────────────────────────────────
 
+/**
+ * A message in a session's inbox (from another session or external source).
+ */
 export interface InboxMessage {
   from: string;
   text: string;
@@ -316,6 +359,9 @@ export interface InboxMessage {
   summary?: string;
 }
 
+/**
+ * Result of starting an Ultraplan session.
+ */
 export interface UltraplanResult {
   id: string;
   status: 'running' | 'completed' | 'error' | 'timeout';
@@ -326,6 +372,9 @@ export interface UltraplanResult {
   error?: string;
 }
 
+/**
+ * Result of starting an Ultrareview session.
+ */
 export interface UltrareviewResult {
   id: string;
   status: 'running' | 'completed' | 'error';
@@ -377,6 +426,9 @@ export interface AgentPersona {
   permissionMode?: PermissionMode;
 }
 
+/**
+ * Configuration for a multi-agent council session.
+ */
 export interface CouncilConfig {
   name?: string;
   agents: AgentPersona[];
@@ -397,6 +449,9 @@ export interface AgentResponse {
   timestamp: string;
 }
 
+/**
+ * A running or completed council session.
+ */
 export interface CouncilSession {
   id: string;
   task: string;
@@ -421,6 +476,9 @@ export interface CouncilChangedFile {
   note?: string;
 }
 
+/**
+ * Result of reviewing a completed council session.
+ */
 export interface CouncilReviewResult {
   councilId: string;
   projectDir: string;
@@ -437,6 +495,9 @@ export interface CouncilReviewResult {
   reviewerGuidance: string;
 }
 
+/**
+ * Result of accepting and finalizing council work.
+ */
 export interface CouncilAcceptResult {
   councilId: string;
   branchesDeleted: string[];
@@ -445,6 +506,9 @@ export interface CouncilAcceptResult {
   reviewsDeleted: boolean;
 }
 
+/**
+ * Result of rejecting council work (includes updated plan.md).
+ */
 export interface CouncilRejectResult {
   councilId: string;
   planRewritten: boolean;

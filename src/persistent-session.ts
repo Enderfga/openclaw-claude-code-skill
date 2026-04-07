@@ -94,22 +94,31 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
     };
   }
 
+  /** Process ID of the underlying Claude CLI subprocess, or undefined if not started. */
   get pid(): number | undefined {
     return this.proc?.pid ?? undefined;
   }
 
+  /** Whether the session has authenticated and is ready to receive messages. */
   get isReady(): boolean {
     return this._isReady;
   }
+  /** Whether message processing is paused. */
   get isPaused(): boolean {
     return this._isPaused;
   }
+  /** Whether the session is currently processing a message. */
   get isBusy(): boolean {
     return this._isBusy;
   }
 
   // ─── Start ───────────────────────────────────────────────────────────────
 
+  /**
+   * Start the Claude CLI process and wait for it to be ready.
+   * @returns This session instance
+   * @throws Error if the process exits unexpectedly during startup
+   */
   async start(): Promise<this> {
     const resolvedBin = this.claudeBin;
     const args = [
@@ -484,6 +493,12 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
 
   // ─── Send ────────────────────────────────────────────────────────────────
 
+  /**
+   * Send a message to the session and wait for a response.
+   * @param message - Message text to send
+   * @param opts - Optional send settings (stream, effort, etc.)
+   * @returns Send result with reply text, events, and stats
+   */
   async send(
     message: string | unknown[],
     options: SessionSendOptions = {},
@@ -617,6 +632,10 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
 
   // ─── Utilities ───────────────────────────────────────────────────────────
 
+  /**
+   * Get runtime statistics for this session.
+   * @returns Stats including message count, context usage, cost, and uptime
+   */
   getStats(): SessionStats & { sessionId?: string; uptime: number } {
     return {
       turns: this.stats.turns,
@@ -655,13 +674,25 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
     return this.send(msg, { waitForComplete: true, timeout: COMPACT_TIMEOUT_MS });
   }
 
+  /**
+   * Get the current effort level for this session.
+   * @returns Current effort level
+   */
   getEffort(): EffortLevel {
     return this.options.effort || 'auto';
   }
+  /**
+   * Set the effort level for this session.
+   * @param level - Effort level (auto, medium, high)
+   */
   setEffort(level: EffortLevel): void {
     this.options.effort = level;
   }
 
+  /**
+   * Get accumulated cost for this session.
+   * @returns Cost breakdown by category
+   */
   getCost(): CostBreakdown {
     const pricing = getModelPricing(this.options.model);
     const nonCachedIn = Math.max(0, this.stats.tokensIn - this.stats.cachedTokens);
@@ -680,20 +711,34 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
     };
   }
 
+  /**
+   * Resolve a model alias to its full model string.
+   * @param alias - Model alias (e.g. "sonnet")
+   * @returns Resolved model string
+   */
   resolveModel(alias: string): string {
     if (this.options.modelOverrides?.[alias]) return this.options.modelOverrides[alias];
     return resolveAlias(alias);
   }
 
+  /**
+   * Pause message processing (internal backlog continues to fill).
+   */
   pause(): void {
     this._isPaused = true;
     this.emit(SESSION_EVENT.PAUSED, { sessionId: this.sessionId });
   }
+  /**
+   * Resume message processing from paused state.
+   */
   resume(): void {
     this._isPaused = false;
     this.emit(SESSION_EVENT.RESUMED, { sessionId: this.sessionId });
   }
 
+  /**
+   * Stop the session and terminate the Claude CLI process.
+   */
   stop(): void {
     this._fireHook('onStop', { cost: this.getCost(), stats: this.getStats() });
     if (this._rl) {
