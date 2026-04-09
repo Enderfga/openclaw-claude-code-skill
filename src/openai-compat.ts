@@ -7,7 +7,7 @@
  */
 
 import * as http from 'node:http';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import { resolveEngineAndModel } from './models.js';
 import {
   OPENAI_COMPAT_DEFAULT_MODEL,
@@ -69,12 +69,31 @@ export interface OpenAIChatCompletionChunk {
 
 /**
  * Derive a session key from the request.
- * Priority: X-Session-Id header > user field > "default"
+ * Priority: X-Session-Id header > user field > sha1(model + systemPrompt) > "default"
+ *
+ * The system-prompt-hash fallback is important: without it, every caller that
+ * does not set X-Session-Id or `user` collapses onto a single shared
+ * "openai-default" session. In multi-caller setups (e.g. OpenClaw routing
+ * the main agent, cron jobs, and subagents through the same gateway) that
+ * means every request serializes against every other and frequently picks
+ * up the wrong session's appendSystemPrompt.
+ *
+ * The model is mixed into the hash so that two callers with the same system
+ * prompt but different requested models don't collide onto one session and
+ * silently get responses from the wrong model.
  */
 export function resolveSessionKey(body: OpenAIChatCompletionRequest, headers: http.IncomingHttpHeaders): string {
   const headerKey = headers['x-session-id'];
   if (typeof headerKey === 'string' && headerKey.trim()) return headerKey.trim();
   if (body.user && body.user.trim()) return body.user.trim();
+  const sys = (body.messages || [])
+    .filter((m) => m && m.role === 'system')
+    .map((m) => (typeof m.content === 'string' ? m.content : JSON.stringify(m.content)))
+    .join('\n');
+  const modelTag = (body.model || '').toString();
+  if (sys || modelTag) {
+    return 'sys-' + createHash('sha1').update(modelTag + '\n' + sys).digest('hex').slice(0, 12);
+  }
   return 'default';
 }
 
@@ -116,16 +135,21 @@ export function extractUserMessage(
   }
   const userMessage = userMessages[userMessages.length - 1].content;
 
-  // Detect new conversation:
-  // 1. Explicit reset header
+  // Detect new conversation: only honor an explicit reset header.
+  //
+  // The previous heuristic — `nonSystemMessages.length <= 1` — assumed the
+  // upstream client forwards the full transcript on every turn (the way
+  // ChatGPT-Next-Web / Open WebUI do). But many clients (notably OpenClaw's
+  // main agent loop) maintain their own conversation state and only forward
+  // the latest user turn. For those clients the heuristic fired on every
+  // request, causing stopSession + startSession every turn, destroying the
+  // persistent CLI and forcing a cold start each time — the exact opposite
+  // of what this bridge exists for. Anthropic prompt caching never warmed.
+  //
+  // Clients that genuinely want to start a new conversation can set
+  // `X-Session-Reset: 1` (or use a different X-Session-Id / user value).
   const resetHeader = headers?.['x-session-reset'];
-  if (resetHeader === 'true' || resetHeader === '1') {
-    return { systemPrompt, userMessage, isNewConversation: true };
-  }
-
-  // 2. Only system + first user message (no assistant turns yet)
-  const nonSystemMessages = messages.filter((m) => m.role !== 'system');
-  const isNewConversation = nonSystemMessages.length <= 1;
+  const isNewConversation = resetHeader === 'true' || resetHeader === '1';
 
   return { systemPrompt, userMessage, isNewConversation };
 }
