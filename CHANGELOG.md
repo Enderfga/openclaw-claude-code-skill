@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.9.3] - 2026-04-09
+
+### Fixed
+- **openai-compat: persistent CLI destroyed every turn (#40)** — `extractUserMessage()`'s `nonSystemMessages.length <= 1` heuristic fired on every request for clients that forward only the latest user turn (OpenClaw main agent, cron jobs, subagents), causing `stopSession` + `startSession` on every turn, destroying the persistent CLI, and preventing Anthropic prompt caching from ever warming. The heuristic is now off by default; clients that want the old behavior set `OPENAI_COMPAT_NEW_CONVO_HEURISTIC=1`. All clients can still force a reset via `X-Session-Reset: 1` (now also accepted case-insensitively with whitespace).
+- **openai-compat: unkeyed callers collapsed onto one shared session (#40)** — `resolveSessionKey()` returned the literal string `'default'` when neither `X-Session-Id` nor `user` was set, so multi-caller setups all shared one `openai-default` plugin session and could see each other's `appendSystemPrompt` (a privacy leak across distinct callers). Now falls back to `'sys-<sha1(model + systemPrompt)>'` so distinct callers land on distinct sessions.
+- **openai-compat: session key ignored requested model (#40)** — two callers with the same system prompt but different requested models collided onto one session and silently got responses from whichever model the session was created with. Model is now mixed into the hash input.
+- **session-manager: concurrent `sendMessage()` race on the same session** — `PersistentClaudeSession`'s single-slot `_streamCallbacks` and shared `TURN_COMPLETE` listener could race when two callers sent on the same session simultaneously, causing the second caller to receive the first caller's response. `SessionManager.sendMessage()` now serializes per-session via a chained promise, with failure isolation so a thrown send doesn't poison the chain.
+- **openai-compat: SSE heartbeat killed streaming for OpenAI SDK clients** — `writeSSE(':keepalive')` produced `data: :keepalive\n\n` which the OpenAI SDK's `SSEDecoder` tried to `JSON.parse`, throwing `SyntaxError` and aborting the stream. Replaced with a proper SSE comment (`': keepalive\n\n'`), interval increased from 15s to 30s. This was the root cause of `outputs: []` when the OpenClaw gateway's agent loop (43KB system prompt, >15s first-token latency) streamed through the bridge.
+- **openai-compat: new sessions forced non-streaming on first turn** — Claude CLI needs 3-15s to boot and process the system prompt. Upstream clients (OpenClaw gateway, OpenAI SDK) would close the streaming connection before the first content chunk arrived. The bridge now forces non-streaming mode for the first turn of a new session, then allows streaming on subsequent turns where the CLI is already warm (<1s first-token).
+- **openai-compat: poisoned session auto-resume from disk** — sessions that crashed during creation (e.g. `claude` not in PATH) were persisted to `claude-sessions.json`. On every server restart, `SessionManager._doStartSession` auto-resumed the broken `claudeSessionId`, producing zero-output sessions that could never recover. OpenAI-compat sessions now set `skipPersistence: true` + `noSessionPersistence: true` so they never persist to disk and never auto-resume stale CLI state.
+- **openai-compat: `content` field as array not handled** — the OpenAI API allows `content` as `string | Array<{type, text}>` (multimodal messages). `extractUserMessage` now normalizes array content via a `textOf()` helper instead of assuming string.
+- **openai-compat: `OpenAIChatMessage` type too narrow** — added `role: 'tool'`, `content: null | Array`, `tool_calls`, `tool_call_id` fields. `OpenAIChatCompletionRequest` now includes `tools`, `max_completion_tokens`. These fields are accepted but intentionally not forwarded to the Claude CLI — the bridge delegates all tool use to Claude Code's own tool system.
+
+### Added
+- **`OPENAI_COMPAT_NEW_CONVO_HEURISTIC` env var** — opt-in legacy heuristic for webchat frontends that re-send the full transcript (ChatGPT-Next-Web, Open WebUI, etc).
+- **`GET /v1/sessions` inspection endpoint** — lists active OpenAI-compat sessions with `cached_tokens`, `tokens_in/out`, `turns`, `context_percent`, `cost_usd`. Production observability for verifying that prompt caching is actually warming. Bearer-token gated like the rest of `/v1/*`.
+- **Serve-mode tuning env vars** — `OPENCLAW_SERVE_MAX_SESSIONS` (default 32, was 5) and `OPENCLAW_SERVE_TTL_MINUTES` (default 60, was 120). Plugin-mode defaults are unchanged.
+- **`skills/references/openai-compat.md`** — dedicated reference for the OpenAI-compat bridge: session keying rules, the two operator modes, env vars, smoke-test recipes.
+- **Tests** — 11 new unit tests covering: positive `X-Session-Reset` (1/true/case-insensitive/whitespace), negative reset values, distinct hash by system prompt, distinct hash by model, model-only hash, legacy-heuristic env-var restore, per-session send mutex serialization, mutex recovery from a failed send.
+
+### Important
+- **Extra usage billing**: When OpenClaw's agent loop routes through this bridge, Anthropic recognizes the system prompt signature as programmatic/agent traffic and bills it against Claude Code's **extra usage** quota at standard API rates. This bridge does NOT bypass Anthropic's subscription enforcement or billing — it is not a workaround for API access restrictions.
+
+### Credits
+- Bug diagnosis (#40) by @megayounus786.
+
 ## [2.9.2] - 2026-04-05
 
 ### Fixed

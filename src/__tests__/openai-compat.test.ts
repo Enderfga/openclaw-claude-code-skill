@@ -2,7 +2,7 @@
  * Unit tests for OpenAI-compatible /v1/chat/completions endpoint.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   resolveSessionKey,
   sessionNameFromKey,
@@ -74,7 +74,7 @@ describe('resolveSessionKey', () => {
     expect(key).toBe('user-42');
   });
 
-  it('falls back to default when nothing provided', () => {
+  it('falls back to literal default only when messages is empty and no model', () => {
     const key = resolveSessionKey({ messages: [] }, {});
     expect(key).toBe('default');
   });
@@ -87,6 +87,74 @@ describe('resolveSessionKey', () => {
   it('ignores empty header', () => {
     const key = resolveSessionKey({ messages: [], user: 'u1' }, { 'x-session-id': '  ' });
     expect(key).toBe('u1');
+  });
+
+  it('hashes system prompt when no explicit key is provided', () => {
+    const key = resolveSessionKey(
+      {
+        messages: [
+          { role: 'system', content: 'You are Alice.' },
+          { role: 'user', content: 'hi' },
+        ],
+      },
+      {},
+    );
+    expect(key).toMatch(/^sys-[0-9a-f]{12}$/);
+  });
+
+  it('produces distinct keys for two distinct system prompts', () => {
+    const a = resolveSessionKey(
+      {
+        messages: [
+          { role: 'system', content: 'You are Alice.' },
+          { role: 'user', content: 'hi' },
+        ],
+      },
+      {},
+    );
+    const b = resolveSessionKey(
+      {
+        messages: [
+          { role: 'system', content: 'You are Bob.' },
+          { role: 'user', content: 'hi' },
+        ],
+      },
+      {},
+    );
+    expect(a).toMatch(/^sys-[0-9a-f]{12}$/);
+    expect(b).toMatch(/^sys-[0-9a-f]{12}$/);
+    expect(a).not.toBe(b);
+  });
+
+  it('produces distinct keys when same system prompt has different requested models', () => {
+    const opus = resolveSessionKey(
+      {
+        model: 'claude-opus-4-6',
+        messages: [
+          { role: 'system', content: 'SAME' },
+          { role: 'user', content: 'hi' },
+        ],
+      },
+      {},
+    );
+    const sonnet = resolveSessionKey(
+      {
+        model: 'claude-sonnet-4-6',
+        messages: [
+          { role: 'system', content: 'SAME' },
+          { role: 'user', content: 'hi' },
+        ],
+      },
+      {},
+    );
+    expect(opus).toMatch(/^sys-[0-9a-f]{12}$/);
+    expect(sonnet).toMatch(/^sys-[0-9a-f]{12}$/);
+    expect(opus).not.toBe(sonnet);
+  });
+
+  it('hashes model alone when there is no system prompt', () => {
+    const key = resolveSessionKey({ model: 'claude-opus-4-6', messages: [{ role: 'user', content: 'hi' }] }, {});
+    expect(key).toMatch(/^sys-[0-9a-f]{12}$/);
   });
 });
 
@@ -102,6 +170,18 @@ describe('sessionNameFromKey', () => {
 // ─── extractUserMessage ──────────────────────────────────────────────────────
 
 describe('extractUserMessage', () => {
+  // Save + restore the env var so the legacy-heuristic test below can mutate it
+  // without leaking into other tests.
+  let savedEnv: string | undefined;
+  beforeEach(() => {
+    savedEnv = process.env.OPENAI_COMPAT_NEW_CONVO_HEURISTIC;
+    delete process.env.OPENAI_COMPAT_NEW_CONVO_HEURISTIC;
+  });
+  afterEach(() => {
+    if (savedEnv === undefined) delete process.env.OPENAI_COMPAT_NEW_CONVO_HEURISTIC;
+    else process.env.OPENAI_COMPAT_NEW_CONVO_HEURISTIC = savedEnv;
+  });
+
   it('extracts last user message', () => {
     const messages: OpenAIChatMessage[] = [
       { role: 'user', content: 'hello' },
@@ -113,7 +193,10 @@ describe('extractUserMessage', () => {
     expect(result.isNewConversation).toBe(false);
   });
 
-  it('extracts system prompt', () => {
+  it('extracts system prompt without flagging it as a new conversation', () => {
+    // Default mode: only X-Session-Reset can mark a new conversation. The
+    // shape "[system, user]" alone is NOT a reset signal — many clients
+    // (OpenClaw main agent) send that exact shape on every turn.
     const messages: OpenAIChatMessage[] = [
       { role: 'system', content: 'You are helpful.' },
       { role: 'user', content: 'hi' },
@@ -121,15 +204,15 @@ describe('extractUserMessage', () => {
     const result = extractUserMessage(messages);
     expect(result.systemPrompt).toBe('You are helpful.');
     expect(result.userMessage).toBe('hi');
-    expect(result.isNewConversation).toBe(true);
+    expect(result.isNewConversation).toBe(false);
   });
 
-  it('detects new conversation (system + single user)', () => {
+  it('does NOT detect new conversation from [system, user] shape without reset header', () => {
     const messages: OpenAIChatMessage[] = [
       { role: 'system', content: 'sys' },
       { role: 'user', content: 'first message' },
     ];
-    expect(extractUserMessage(messages).isNewConversation).toBe(true);
+    expect(extractUserMessage(messages).isNewConversation).toBe(false);
   });
 
   it('detects ongoing conversation (has assistant turns)', () => {
@@ -142,11 +225,11 @@ describe('extractUserMessage', () => {
     expect(extractUserMessage(messages).isNewConversation).toBe(false);
   });
 
-  it('handles single user message as new conversation', () => {
+  it('does NOT treat a single user message as a new conversation without reset header', () => {
     const messages: OpenAIChatMessage[] = [{ role: 'user', content: 'only' }];
     const result = extractUserMessage(messages);
     expect(result.userMessage).toBe('only');
-    expect(result.isNewConversation).toBe(true);
+    expect(result.isNewConversation).toBe(false);
     expect(result.systemPrompt).toBeUndefined();
   });
 
@@ -166,6 +249,56 @@ describe('extractUserMessage', () => {
   it('throws on no user message', () => {
     const messages: OpenAIChatMessage[] = [{ role: 'system', content: 'sys' }];
     expect(() => extractUserMessage(messages)).toThrow('No user message');
+  });
+
+  it('honors X-Session-Reset: 1 header', () => {
+    const messages: OpenAIChatMessage[] = [
+      { role: 'system', content: 'sys' },
+      { role: 'user', content: 'fresh start' },
+    ];
+    const result = extractUserMessage(messages, { 'x-session-reset': '1' });
+    expect(result.isNewConversation).toBe(true);
+  });
+
+  it('honors X-Session-Reset: true header', () => {
+    const messages: OpenAIChatMessage[] = [{ role: 'user', content: 'fresh start' }];
+    const result = extractUserMessage(messages, { 'x-session-reset': 'true' });
+    expect(result.isNewConversation).toBe(true);
+  });
+
+  it('honors X-Session-Reset case-insensitively with whitespace', () => {
+    const messages: OpenAIChatMessage[] = [{ role: 'user', content: 'fresh start' }];
+    expect(extractUserMessage(messages, { 'x-session-reset': '  TRUE ' }).isNewConversation).toBe(true);
+    expect(extractUserMessage(messages, { 'x-session-reset': ' 1' }).isNewConversation).toBe(true);
+  });
+
+  it('ignores unrelated x-session-reset values', () => {
+    const messages: OpenAIChatMessage[] = [{ role: 'user', content: 'hi' }];
+    expect(extractUserMessage(messages, { 'x-session-reset': 'no' }).isNewConversation).toBe(false);
+    expect(extractUserMessage(messages, { 'x-session-reset': '' }).isNewConversation).toBe(false);
+    expect(extractUserMessage(messages, {}).isNewConversation).toBe(false);
+  });
+
+  it('restores legacy heuristic when OPENAI_COMPAT_NEW_CONVO_HEURISTIC=1', () => {
+    process.env.OPENAI_COMPAT_NEW_CONVO_HEURISTIC = '1';
+    // [system, user] should now flag as new conversation
+    expect(
+      extractUserMessage([
+        { role: 'system', content: 'sys' },
+        { role: 'user', content: 'first' },
+      ]).isNewConversation,
+    ).toBe(true);
+    // [user] alone should also flag as new conversation
+    expect(extractUserMessage([{ role: 'user', content: 'only' }]).isNewConversation).toBe(true);
+    // Once an assistant turn appears, it's no longer new
+    expect(
+      extractUserMessage([
+        { role: 'system', content: 'sys' },
+        { role: 'user', content: 'a' },
+        { role: 'assistant', content: 'b' },
+        { role: 'user', content: 'c' },
+      ]).isNewConversation,
+    ).toBe(false);
   });
 });
 

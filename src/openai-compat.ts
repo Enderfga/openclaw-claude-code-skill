@@ -7,7 +7,7 @@
  */
 
 import * as http from 'node:http';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import { resolveEngineAndModel } from './models.js';
 import {
   OPENAI_COMPAT_DEFAULT_MODEL,
@@ -18,8 +18,10 @@ import {
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface OpenAIChatMessage {
-  role: 'system' | 'user' | 'assistant';
-  content: string;
+  role: 'system' | 'user' | 'assistant' | 'tool';
+  content: string | Array<{ type?: string; text?: string }> | null;
+  tool_calls?: Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }>;
+  tool_call_id?: string;
 }
 
 export interface OpenAIChatCompletionRequest {
@@ -28,7 +30,9 @@ export interface OpenAIChatCompletionRequest {
   stream?: boolean;
   temperature?: number;
   max_tokens?: number;
+  max_completion_tokens?: number;
   user?: string;
+  tools?: Array<{ type: 'function'; function: { name: string; description: string; parameters: unknown } }>;
 }
 
 export interface OpenAIChatCompletionResponse {
@@ -69,12 +73,38 @@ export interface OpenAIChatCompletionChunk {
 
 /**
  * Derive a session key from the request.
- * Priority: X-Session-Id header > user field > "default"
+ * Priority: X-Session-Id header > user field > sha1(model + systemPrompt) > "default"
+ *
+ * The system-prompt-hash fallback prevents the bug where every caller without
+ * X-Session-Id or `user` collapses onto a single shared "openai-default"
+ * plugin session. In multi-caller setups (OpenClaw routing the main agent,
+ * cron jobs, and subagents through the same gateway) that previously meant
+ * every request serialized against every other and frequently picked up the
+ * wrong session's appendSystemPrompt — also a privacy leak across callers.
+ *
+ * The model is mixed into the hash so that two callers with the same system
+ * prompt but different requested models don't collide and silently get
+ * responses from the wrong model. Originally diagnosed in PR #40 by
+ * @megayounus786.
  */
 export function resolveSessionKey(body: OpenAIChatCompletionRequest, headers: http.IncomingHttpHeaders): string {
   const headerKey = headers['x-session-id'];
   if (typeof headerKey === 'string' && headerKey.trim()) return headerKey.trim();
   if (body.user && body.user.trim()) return body.user.trim();
+  const sys = (body.messages || [])
+    .filter((m) => m && m.role === 'system')
+    .map((m) => (typeof m.content === 'string' ? m.content : JSON.stringify(m.content)))
+    .join('\n');
+  const modelTag = (body.model || '').toString();
+  if (sys || modelTag) {
+    return (
+      'sys-' +
+      createHash('sha1')
+        .update(modelTag + '\n' + sys)
+        .digest('hex')
+        .slice(0, 12)
+    );
+  }
   return 'default';
 }
 
@@ -93,9 +123,26 @@ export interface ExtractedMessage {
 
 /**
  * Extract the relevant parts from an OpenAI messages array.
- * Since sessions are stateful, we only need the last user message.
- * A "new conversation" is detected when the array is short (system + user only),
- * or when the x-session-reset header is set.
+ *
+ * Sessions are stateful — we only need the last user message. The tricky
+ * question is whether to start a fresh session or append to the existing one.
+ *
+ * Default mode (no env var): only honor an explicit `X-Session-Reset: 1`
+ * header. This is correct for clients that maintain their own conversation
+ * transcript and forward only the latest user turn (OpenClaw main agent
+ * loop, cron jobs, subagents). The previous heuristic
+ * (`nonSystemMessages.length <= 1`) fired on every such request, killing the
+ * persistent CLI every turn and preventing Anthropic prompt caching from
+ * ever warming. Originally diagnosed in PR #40 by @megayounus786.
+ *
+ * Legacy mode (`OPENAI_COMPAT_NEW_CONVO_HEURISTIC=1`): restore the old
+ * `system + single user ⇒ new conversation` rule, for clients that re-send
+ * the full transcript on every turn (ChatGPT-Next-Web, Open WebUI, data
+ * labeling tools, etc). They use the transcript shape itself as their only
+ * "start a new conversation" signal.
+ *
+ * The env var is read on every call so ops can flip it via launchctl setenv
+ * without restarting the server.
  */
 export function extractUserMessage(
   messages: OpenAIChatMessage[],
@@ -105,29 +152,46 @@ export function extractUserMessage(
     throw new Error('messages array is empty');
   }
 
+  // Normalize content from any message: OpenAI API allows content as a string
+  // OR an array of content parts (e.g. multimodal messages with text + images).
+  // We need a string for the CLI, so arrays are joined.
+  const textOf = (m: OpenAIChatMessage): string => {
+    if (typeof m.content === 'string') return m.content;
+    if (Array.isArray(m.content)) {
+      return (m.content as Array<{ type?: string; text?: string }>)
+        .map((p) => p.text || '')
+        .filter(Boolean)
+        .join('');
+    }
+    return m.content != null ? String(m.content) : '';
+  };
+
   // Extract system prompt if present
   const systemMessages = messages.filter((m) => m.role === 'system');
-  const systemPrompt = systemMessages.length > 0 ? systemMessages.map((m) => m.content).join('\n') : undefined;
+  const systemPrompt = systemMessages.length > 0 ? systemMessages.map(textOf).join('\n') : undefined;
 
   // Find last user message
   const userMessages = messages.filter((m) => m.role === 'user');
   if (userMessages.length === 0) {
     throw new Error('No user message found in messages array');
   }
-  const userMessage = userMessages[userMessages.length - 1].content;
+  const userMessage = textOf(userMessages[userMessages.length - 1]);
 
-  // Detect new conversation:
-  // 1. Explicit reset header
-  const resetHeader = headers?.['x-session-reset'];
+  // 1. Explicit reset header — honored in both modes. Normalize trim+lowercase
+  //    so callers using `TRUE`, ` 1 `, etc. don't silently fail.
+  const rawReset = headers?.['x-session-reset'];
+  const resetHeader = typeof rawReset === 'string' ? rawReset.trim().toLowerCase() : '';
   if (resetHeader === 'true' || resetHeader === '1') {
     return { systemPrompt, userMessage, isNewConversation: true };
   }
 
-  // 2. Only system + first user message (no assistant turns yet)
-  const nonSystemMessages = messages.filter((m) => m.role !== 'system');
-  const isNewConversation = nonSystemMessages.length <= 1;
+  // 2. Legacy heuristic — only when explicitly opted in via env var.
+  if (process.env.OPENAI_COMPAT_NEW_CONVO_HEURISTIC === '1') {
+    const nonSystemMessages = messages.filter((m) => m.role !== 'system');
+    return { systemPrompt, userMessage, isNewConversation: nonSystemMessages.length <= 1 };
+  }
 
-  return { systemPrompt, userMessage, isNewConversation };
+  return { systemPrompt, userMessage, isNewConversation: false };
 }
 
 // ─── Response Formatting ─────────────────────────────────────────────────────
@@ -265,6 +329,23 @@ export async function handleChatCompletion(
       engine,
       model: resolvedModel,
       permissionMode: 'bypassPermissions',
+      // OpenAI-compat sessions must NOT persist to disk or auto-resume from
+      // disk. Reasons:
+      // 1. A poisoned session (e.g. from a previous ENOENT/crash) would be
+      //    auto-resumed on every server restart, producing zero output forever.
+      // 2. The system prompt may change between server restarts (different
+      //    caller context), and auto-resume would ignore the new prompt.
+      // 3. API endpoints should be stateless across server restarts — the
+      //    in-memory session is sufficient while the server is running.
+      //
+      // noSessionPersistence: tells the CLI not to write session state to
+      //   disk (`--no-session-persistence`), so the next server restart
+      //   creates a genuinely fresh session instead of resuming stale state.
+      // skipPersistence: tells SessionManager not to write this session to
+      //   the disk registry, so `_doStartSession` won't find a stale
+      //   claudeSessionId to `--resume` from.
+      noSessionPersistence: true,
+      skipPersistence: true,
     };
     if (extracted.systemPrompt) {
       sessionConfig.appendSystemPrompt = extracted.systemPrompt;
@@ -296,7 +377,20 @@ export async function handleChatCompletion(
 
   const completionId = `chatcmpl-${randomUUID().replace(/-/g, '').slice(0, 29)}`;
 
-  if (isStreaming) {
+  // Force non-streaming for the first turn of a new session. Claude CLI needs
+  // 3-15 seconds to boot and process the system prompt, and many upstream
+  // clients (including the OpenClaw gateway's agent loop, which uses the OpenAI
+  // SDK with default timeouts) will close the streaming connection before the
+  // first content chunk arrives. Non-streaming mode makes the HTTP response
+  // wait until the full response is ready, which is handled correctly by the
+  // SDK's non-streaming path (longer timeout, no SSE parsing).
+  //
+  // Subsequent turns on the same session reuse the already-running CLI process,
+  // so first-token latency drops to <1s and streaming is safe.
+  const forceNonStream = needsCreate;
+  const useStreaming = isStreaming && !forceNonStream;
+
+  if (useStreaming) {
     await handleStreaming(manager, sessionName, resolvedModel, extracted.userMessage, completionId, res);
   } else {
     await handleNonStreaming(manager, sessionName, resolvedModel, extracted.userMessage, completionId, res);
@@ -368,10 +462,19 @@ async function handleStreaming(
   // Initial chunk with role
   writeSSE(JSON.stringify(formatCompletionChunk(completionId, model, { role: 'assistant' }, null)));
 
-  // SSE keepalive heartbeat to prevent proxy/client timeouts
+  // SSE keepalive heartbeat to prevent proxy/client timeouts.
+  // IMPORTANT: must write a proper SSE comment (line starting with ':'),
+  // NOT a 'data:' field. The OpenAI SDK JSON.parse()s every data field —
+  // sending 'data: :keepalive' causes a SyntaxError that aborts the stream.
   const heartbeatTimer = setInterval(() => {
-    writeSSE(':keepalive');
-  }, 15_000);
+    if (!clientDisconnected) {
+      try {
+        res.write(': keepalive\n\n');
+      } catch {
+        clientDisconnected = true;
+      }
+    }
+  }, 30_000);
 
   try {
     await manager.sendMessage(sessionName, userMessage, {

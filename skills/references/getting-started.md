@@ -74,17 +74,22 @@ The embedded HTTP server (used by CLI and standalone mode) optionally supports b
 
 When set, the token is also written to `~/.openclaw/server-token` for the CLI to read automatically. Default: no auth (localhost binding is the primary security boundary).
 
-### Using with Webchat Frontends
+### OpenAI-Compatible Endpoint
 
-The server exposes an OpenAI-compatible API at `/v1/chat/completions`. Point any OpenAI-compatible webchat app at it:
+The server exposes an OpenAI-compatible API at `/v1/chat/completions`. It serves both kinds of clients as first-class citizens:
+
+- **Upstream agents** (OpenClaw main loop, cron, subagents) that maintain their own transcript and only forward the latest user turn — uses default mode.
+- **Webchat / labeling tools** (ChatGPT-Next-Web, Open WebUI, LobeChat) that re-send the full transcript every turn — set `OPENAI_COMPAT_NEW_CONVO_HEURISTIC=1`.
+
+Quick config for any client:
 
 | Setting | Value |
 |---------|-------|
 | API Base URL | `http://127.0.0.1:18796/v1` |
-| API Key | Any value (or blank if no `OPENCLAW_SERVER_TOKEN` set) |
-| Model | `claude-sonnet-4-6`, `claude-opus-4-6`, `gpt-5.4`, `gemini-3.1-pro-preview`, etc. |
+| API Key | The value of `OPENCLAW_SERVER_TOKEN`, or any string if auth is disabled |
+| Model | `claude-opus-4-6`, `claude-sonnet-4-6`, `gpt-5.4`, `gemini-3.1-pro-preview`, etc. |
 
-Tested with: ChatGPT-Next-Web, Open WebUI, LobeChat.
+See [openai-compat.md](./openai-compat.md) for the full session-keying rules, `X-Session-Reset` semantics, the legacy-heuristic env var, and the `/v1/sessions` inspection endpoint.
 
 ## Configuration
 

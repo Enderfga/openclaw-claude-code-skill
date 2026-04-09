@@ -170,6 +170,15 @@ interface ManagedSession {
   lastActivity: number;
   cwd: string;
   claudeSessionId?: string;
+  /**
+   * Per-session send chain. Concurrent sendMessage() calls on the same session
+   * MUST serialize, otherwise PersistentClaudeSession's single _streamCallbacks
+   * field and shared TURN_COMPLETE listener race — the second caller would
+   * receive the first caller's response. Each call awaits the previous chain
+   * link, then installs its own; release happens in a finally block so a
+   * thrown send still unblocks waiters.
+   */
+  sendChain?: Promise<unknown>;
 }
 
 interface SendOptions {
@@ -254,8 +263,11 @@ export class SessionManager {
       throw new Error(`Max concurrent sessions (${this.pluginConfig.maxConcurrentSessions}) reached`);
     }
 
-    // Auto-resume: if we have a persisted claudeSessionId for this name, inject it
-    const persisted = this.persistedSessions.get(name);
+    // Auto-resume: if we have a persisted claudeSessionId for this name, inject it.
+    // Skip when config.skipPersistence is set (e.g. openai-compat bridge sessions
+    // that must NOT resume stale CLI state from a previous server run).
+    const skipPersist = !!(config as Record<string, unknown>).skipPersistence;
+    const persisted = skipPersist ? undefined : this.persistedSessions.get(name);
     // Unified: only use resumeSessionId (claudeResumeId is an internal alias, not exposed)
     const resumeId = config.resumeSessionId ?? persisted?.claudeSessionId;
 
@@ -321,56 +333,87 @@ export class SessionManager {
 
     this.sessions.set(name, managed);
 
-    // Persist registry after session is live
-    this._persistSession(name, managed);
+    // Persist registry after session is live (skip for ephemeral sessions
+    // like the openai-compat bridge that set skipPersistence: true)
+    if (!skipPersist) {
+      this._persistSession(name, managed);
+    }
 
     return this._toSessionInfo(name, managed);
   }
 
   async sendMessage(name: string, message: string, options: SendOptions = {}): Promise<SendResult> {
     const managed = this._getSession(name);
-    managed.lastActivity = Date.now();
 
-    const sendOpts: Record<string, unknown> = {
-      waitForComplete: true,
-      timeout: options.timeout || TURN_TIMEOUT_MS,
-    };
+    // Per-session serialization. Two concurrent sendMessage() calls on the
+    // same session previously raced on PersistentClaudeSession._streamCallbacks
+    // and the shared TURN_COMPLETE listener — the second caller would receive
+    // the first caller's response, and stream callbacks would clobber each
+    // other. Chain waiters via a per-session promise so a slow turn blocks
+    // (rather than corrupts) subsequent sends.
+    const prior = managed.sendChain ?? Promise.resolve();
+    let releaseChain!: () => void;
+    const link = new Promise<void>((resolve) => {
+      releaseChain = resolve;
+    });
+    managed.sendChain = prior.then(() => link).catch(() => link);
+    try {
+      await prior;
+    } catch {
+      /* prior failure shouldn't block this caller */
+    }
 
-    if (options.effort) sendOpts.effort = options.effort;
-    if (options.plan) sendOpts.plan = true;
+    try {
+      managed.lastActivity = Date.now();
 
-    if (options.onEvent || options.onChunk) {
-      sendOpts.callbacks = {
-        onText: (text: string) => {
-          if (options.onChunk) options.onChunk(text);
-          if (options.onEvent) options.onEvent({ type: 'text', result: text } as StreamEvent);
-        },
-        onToolUse: (event: unknown) => {
-          if (options.onEvent) options.onEvent({ type: 'tool_use', ...(event as object) } as StreamEvent);
-        },
-        onToolResult: (event: unknown) => {
-          if (options.onEvent) options.onEvent({ type: 'tool_result', ...(event as object) } as StreamEvent);
-        },
+      const sendOpts: Record<string, unknown> = {
+        waitForComplete: true,
+        timeout: options.timeout || TURN_TIMEOUT_MS,
       };
+
+      if (options.effort) sendOpts.effort = options.effort;
+      if (options.plan) sendOpts.plan = true;
+
+      if (options.onEvent || options.onChunk) {
+        sendOpts.callbacks = {
+          onText: (text: string) => {
+            if (options.onChunk) options.onChunk(text);
+            if (options.onEvent) options.onEvent({ type: 'text', result: text } as StreamEvent);
+          },
+          onToolUse: (event: unknown) => {
+            if (options.onEvent) options.onEvent({ type: 'tool_use', ...(event as object) } as StreamEvent);
+          },
+          onToolResult: (event: unknown) => {
+            if (options.onEvent) options.onEvent({ type: 'tool_result', ...(event as object) } as StreamEvent);
+          },
+        };
+      }
+
+      const result = await managed.session.send(message, sendOpts);
+
+      // Update session ID if available (skip disk persist for ephemeral
+      // sessions that were started with skipPersistence)
+      if (managed.session.sessionId) {
+        managed.claudeSessionId = managed.session.sessionId;
+        if (this.persistedSessions.has(name)) {
+          this._persistSession(name, managed);
+        }
+      }
+
+      if ('text' in result) {
+        return {
+          output: result.text,
+          sessionId: managed.claudeSessionId,
+          events: [],
+        };
+      }
+
+      return { output: '', sessionId: managed.claudeSessionId, events: [] };
+    } finally {
+      releaseChain();
+      // If this was the tail of the chain, clear it so memory doesn't grow.
+      if (managed.sendChain === link) managed.sendChain = undefined;
     }
-
-    const result = await managed.session.send(message, sendOpts);
-
-    // Update session ID if available
-    if (managed.session.sessionId) {
-      managed.claudeSessionId = managed.session.sessionId;
-      this._persistSession(name, managed);
-    }
-
-    if ('text' in result) {
-      return {
-        output: result.text,
-        sessionId: managed.claudeSessionId,
-        events: [],
-      };
-    }
-
-    return { output: '', sessionId: managed.claudeSessionId, events: [] };
   }
 
   async stopSession(name: string): Promise<void> {

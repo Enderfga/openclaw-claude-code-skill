@@ -55,7 +55,19 @@ program
   .action(async (opts) => {
     const { SessionManager } = await import('../src/session-manager.js');
     const { EmbeddedServer } = await import('../src/embedded-server.js');
-    const manager = new SessionManager();
+    // Serve mode targets long-running multi-caller setups (OpenAI-compat
+    // bridge for OpenClaw main agent + cron + subagents + webchat). Default
+    // bumps over the in-plugin defaults are intentional:
+    //   - maxConcurrentSessions=32: each distinct caller gets its own
+    //     sys-<hash> session, 5 is too low for prod multi-caller use.
+    //   - sessionTtlMinutes=60: faster reaping of idle one-off callers.
+    // Both env-overridable so ops can tune without a code change.
+    const maxSessions = parseInt(process.env.OPENCLAW_SERVE_MAX_SESSIONS || '', 10) || 32;
+    const ttlMinutes = parseInt(process.env.OPENCLAW_SERVE_TTL_MINUTES || '', 10) || 60;
+    const manager = new SessionManager({
+      maxConcurrentSessions: maxSessions,
+      sessionTtlMinutes: ttlMinutes,
+    });
     const server = new EmbeddedServer(manager, parseInt(opts.port));
     const port = await server.start();
     if (port) {

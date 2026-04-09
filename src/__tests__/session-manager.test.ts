@@ -415,6 +415,55 @@ describe('SessionManager', () => {
       // onEvent should receive text, tool_use, and tool_result events
       expect(events.length).toBe(3);
     });
+
+    it('serializes concurrent sendMessage calls on the same session', async () => {
+      // Two concurrent sends on the same session must NOT interleave —
+      // PersistentClaudeSession's _streamCallbacks and TURN_COMPLETE listener
+      // are single-slot, so without serialization the second caller would
+      // receive the first caller's response.
+      await mgr.startSession({ name: 'race-test', cwd: '/tmp' });
+      const mock = lastMock();
+      const log: string[] = [];
+
+      // Replace send() with a slow, instrumented version that logs entry/exit.
+      mock.send = async (message) => {
+        const tag = String(message);
+        log.push(`enter:${tag}`);
+        // Yield to the event loop so any concurrent caller would race here
+        // if no mutex was holding them off.
+        await new Promise((r) => setTimeout(r, 20));
+        log.push(`exit:${tag}`);
+        return { text: `reply:${tag}`, event: { type: 'result' } };
+      };
+
+      // Fire two sends in parallel — both should resolve with the correct
+      // matching reply, and the log must show no interleaving.
+      const [r1, r2] = await Promise.all([mgr.sendMessage('race-test', 'one'), mgr.sendMessage('race-test', 'two')]);
+
+      expect(r1.output).toBe('reply:one');
+      expect(r2.output).toBe('reply:two');
+      // No interleaving: every enter must be immediately followed by its exit
+      expect(log).toEqual(['enter:one', 'exit:one', 'enter:two', 'exit:two']);
+    });
+
+    it('does not deadlock subsequent sends after a failed send', async () => {
+      // If the prior link in the chain rejects, the next caller must still
+      // proceed (we catch in the chain hand-off so failures don't poison it).
+      await mgr.startSession({ name: 'recover-test', cwd: '/tmp' });
+      const mock = lastMock();
+      let failedOnce = false;
+      mock.send = async (message) => {
+        if (!failedOnce) {
+          failedOnce = true;
+          throw new Error('boom');
+        }
+        return { text: `ok:${message}`, event: { type: 'result' } };
+      };
+
+      await expect(mgr.sendMessage('recover-test', 'first')).rejects.toThrow('boom');
+      const r2 = await mgr.sendMessage('recover-test', 'second');
+      expect(r2.output).toBe('ok:second');
+    });
   });
 
   // ─── Model Resolution ───────────────────────────────────────────────

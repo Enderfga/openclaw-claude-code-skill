@@ -17,7 +17,13 @@ import type { EffortLevel } from './types.js';
 import { handleChatCompletion } from './openai-compat.js';
 import { getModelList } from './models.js';
 
-import { DEFAULT_SERVER_PORT, MAX_BODY_SIZE, RATE_LIMIT_MAX_REQUESTS, RATE_LIMIT_WINDOW_MS } from './constants.js';
+import {
+  DEFAULT_SERVER_PORT,
+  MAX_BODY_SIZE,
+  RATE_LIMIT_MAX_REQUESTS,
+  RATE_LIMIT_WINDOW_MS,
+  OPENAI_COMPAT_SESSION_PREFIX,
+} from './constants.js';
 
 export class EmbeddedServer {
   private server: http.Server | null = null;
@@ -359,6 +365,39 @@ export class EmbeddedServer {
 
       if (path === '/v1/models') {
         json(200, getModelList());
+        return;
+      }
+
+      if (path === '/v1/sessions') {
+        // Inspection endpoint for openai-compat sessions only — not interactive
+        // CLI sessions. Production observability: lets ops verify the persistent
+        // CLI is being reused (cached_tokens grows turn-over-turn) instead of
+        // killed every request. Bearer-token gated like the rest of /v1/*.
+        const rows = this.manager
+          .listSessions()
+          .filter((s) => s.name.startsWith(OPENAI_COMPAT_SESSION_PREFIX))
+          .map((s) => {
+            let stats: ReturnType<SessionManager['getStatus']>['stats'] | null = null;
+            try {
+              stats = this.manager.getStatus(s.name).stats;
+            } catch {
+              /* session may have just been reaped */
+            }
+            return {
+              key: s.name.slice(OPENAI_COMPAT_SESSION_PREFIX.length),
+              session_name: s.name,
+              model: s.model,
+              cwd: s.cwd,
+              created: s.created,
+              turns: stats?.turns,
+              tokens_in: stats?.tokensIn,
+              tokens_out: stats?.tokensOut,
+              cached_tokens: stats?.cachedTokens,
+              context_percent: stats?.contextPercent,
+              cost_usd: stats?.costUsd,
+            };
+          });
+        json(200, { object: 'list', data: rows });
         return;
       }
 

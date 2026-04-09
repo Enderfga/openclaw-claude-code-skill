@@ -143,3 +143,16 @@ export const OPENAI_COMPAT_DEFAULT_MODEL = 'claude-sonnet-4-6';
 export const OPENAI_COMPAT_AUTO_COMPACT_THRESHOLD = 80;
 /** Session name prefix for OpenAI-compat sessions */
 export const OPENAI_COMPAT_SESSION_PREFIX = 'openai-';
+/**
+ * Default for the legacy new-conversation heuristic gate.
+ *
+ * When env var `OPENAI_COMPAT_NEW_CONVO_HEURISTIC=1` is set, the old
+ * "system + single user ⇒ new conversation" rule is restored for webchat
+ * frontends (ChatGPT-Next-Web, Open WebUI, etc) that re-send the full
+ * transcript every turn. Default off: assumes upstream clients forward
+ * only the latest turn (OpenClaw main agent loop, cron jobs, subagents).
+ *
+ * The constant exists as a documentation anchor; openai-compat.ts reads
+ * the env var directly so the value can be flipped without restart.
+ */
+export const OPENAI_COMPAT_NEW_CONVO_HEURISTIC_DEFAULT = false;

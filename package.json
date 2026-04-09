@@ -1,6 +1,6 @@
 {
   "name": "@enderfga/openclaw-claude-code",
-  "version": "2.9.2",
+  "version": "2.9.3",
   "description": "OpenClaw plugin — full Claude Code SDK with session management, agent teams, multi-model proxy, and plan mode",
   "type": "module",
   "main": "./dist/src/index.js",
