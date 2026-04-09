@@ -347,7 +347,8 @@ export async function handleChatCompletion(
       noSessionPersistence: true,
       skipPersistence: true,
     };
-    if (extracted.systemPrompt) {
+    // Claude Code CLI supports --append-system-prompt natively.
+    if (extracted.systemPrompt && engine === 'claude') {
       sessionConfig.appendSystemPrompt = extracted.systemPrompt;
     }
     try {
@@ -375,12 +376,23 @@ export async function handleChatCompletion(
     }
   }
 
+  // For non-claude engines (Cursor, Codex, Gemini), their CLIs don't support
+  // --append-system-prompt. Prepend the upstream system prompt to the user
+  // message on EVERY turn so the model sees the caller's identity, tool
+  // definitions, and workspace context. This is done here (not at session
+  // creation) because these engines spawn a fresh CLI process per turn —
+  // there's no persistent session to carry the system prompt forward.
+  let userMessage = extracted.userMessage;
+  if (extracted.systemPrompt && engine !== 'claude') {
+    userMessage = `<system>\n${extracted.systemPrompt}\n</system>\n\n${userMessage}`;
+  }
+
   const completionId = `chatcmpl-${randomUUID().replace(/-/g, '').slice(0, 29)}`;
 
   if (isStreaming) {
-    await handleStreaming(manager, sessionName, resolvedModel, extracted.userMessage, completionId, res);
+    await handleStreaming(manager, sessionName, resolvedModel, userMessage, completionId, res);
   } else {
-    await handleNonStreaming(manager, sessionName, resolvedModel, extracted.userMessage, completionId, res);
+    await handleNonStreaming(manager, sessionName, resolvedModel, userMessage, completionId, res);
   }
 }
 

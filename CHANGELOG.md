@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.9.4] - 2026-04-09
+
+### Fixed
+- **openai-compat: system prompt not injected for non-Claude engines** — Cursor, Codex, and Gemini CLIs don't support `--append-system-prompt`, so the upstream caller's system prompt (OpenClaw agent identity, tool definitions, workspace context) was silently dropped. Now prepended as `<system>...</system>` to the user message on every turn for non-Claude engines.
+- **openai-compat: removed forceNonStream** — returning JSON when the gateway sent `stream: true` caused a protocol mismatch; the OpenAI SDK expected SSE, so webchat received no reply. Streaming with the fixed heartbeat comment format handles cold-start delay correctly.
+
+### Added
+- **Cursor Auto model routing** — `model: "auto"` now resolves to the `cursor` engine, enabling Cursor's unlimited Auto mode as a primary backend via the OpenAI-compat bridge.
+
 ## [2.9.3] - 2026-04-09
 
 ### Fixed
