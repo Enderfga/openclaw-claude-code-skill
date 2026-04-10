@@ -7,6 +7,8 @@
  */
 
 import * as http from 'node:http';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import * as os from 'node:os';
 import { randomUUID, createHash } from 'node:crypto';
 import { resolveEngineAndModel } from './models.js';
@@ -324,17 +326,20 @@ export async function handleChatCompletion(
   // Create session if needed
   const needsCreate = !sessionExists || extracted.isNewConversation;
   if (needsCreate) {
-    // Non-claude engines (Cursor, Codex, Gemini) scan --workspace for context
-    // (CLAUDE.md, git status, plan files) and "resume" from whatever project
-    // the server sits in, producing responses about the wrong topic. Use
-    // homedir as a neutral cwd to avoid stale workspace context leaking in.
-    const sessionCwd = engine === 'claude' ? process.cwd() : os.homedir();
+    // OpenAI-compat sessions are API proxies, not coding sessions.
+    // Use a neutral empty temp dir so the CLI doesn't load CLAUDE.md,
+    // git state, or project context from wherever `serve` was started.
+    // Combined with `bare: true`, this ensures the only context the
+    // model sees is what the upstream caller injected via system prompt.
+    const sessionCwd = path.join(os.tmpdir(), `openclaw-compat-${sessionName}`);
+    if (!fs.existsSync(sessionCwd)) fs.mkdirSync(sessionCwd, { recursive: true });
     const sessionConfig: Record<string, unknown> = {
       name: sessionName,
       cwd: sessionCwd,
       engine,
       model: resolvedModel,
       permissionMode: 'bypassPermissions',
+      bare: true,
       // OpenAI-compat sessions must NOT persist to disk or auto-resume from
       // disk. Reasons:
       // 1. A poisoned session (e.g. from a previous ENOENT/crash) would be
