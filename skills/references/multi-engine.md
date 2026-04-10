@@ -12,8 +12,10 @@ SessionManager
 │   └── Wraps: codex exec --full-auto (per-message spawning)
 ├── engine: 'gemini'  → PersistentGeminiSession
 │   └── Wraps: gemini -p --output-format stream-json (per-message spawning)
-└── engine: 'cursor'  → PersistentCursorSession
-    └── Wraps: agent -p --force --output-format stream-json (per-message spawning)
+├── engine: 'cursor'  → PersistentCursorSession
+│   └── Wraps: agent -p --force --output-format stream-json (per-message spawning)
+└── engine: 'custom'  → PersistentCustomSession
+    └── Wraps: any CLI via user-provided CustomEngineConfig
 ```
 
 ## Supported Engines
@@ -193,13 +195,147 @@ Claude Code CLI (Anthropic format)
       → Any model (Gemini, GPT, local, etc.)
 ```
 
-## Adding a New Engine
+## Custom Engine (`engine: 'custom'`)
 
-To add support for a new CLI (e.g., Aider, Cursor CLI):
+Integrate **any** coding agent CLI without writing engine-specific code. You provide a `CustomEngineConfig` that maps your CLI's flags to OpenClaw session concepts.
+
+Two protocol modes:
+- **Persistent** (`persistent: true`) — long-running subprocess with stream-json I/O over stdin/stdout (like Claude Code)
+- **One-shot** (`persistent: false`, default) — new process spawned per `send()` (like Gemini/Codex)
+
+### CustomEngineConfig
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | yes | Display name (used in logs, session IDs) |
+| `bin` | string | yes | Binary path or command name |
+| `binEnv` | string | | Env var name that overrides `bin` at runtime |
+| `persistent` | boolean | | `true` = persistent subprocess, `false` = one-shot (default) |
+| `args` | object | yes | CLI flag mappings (see below) |
+| `permissionModes` | object | | Maps OpenClaw mode names to CLI-specific values |
+| `pricing` | object | | `{ input, output, cached? }` per 1M tokens |
+| `contextWindow` | number | | Context window size (default: 200,000) |
+| `env` | object | | Extra environment variables for the CLI process |
+| `sanitizePatterns` | string[] | | Regex patterns to redact from stderr |
+
+### args field
+
+| Key | Example | Description |
+|-----|---------|-------------|
+| `print` | `"-p"` | Non-interactive/print mode flag |
+| `outputFormat` | `"--output-format"` | Output format flag |
+| `outputFormatValue` | `"stream-json"` | Value for stream-json output |
+| `inputFormat` | `"--input-format"` | Input format flag (persistent only) |
+| `inputFormatValue` | `"stream-json"` | Value for stream-json input |
+| `skipPermissions` | `"-y"` | Skip all permissions flag |
+| `permissionMode` | `"--permission-mode"` | Permission mode flag |
+| `model` | `"--model"` | Model selection flag |
+| `systemPrompt` | `"--system-prompt"` | System prompt override flag |
+| `appendSystemPrompt` | `"--append-system-prompt"` | Append system prompt flag |
+| `maxTurns` | `"--max-turns"` | Max agent turns flag |
+| `resume` | `"--resume"` | Session resume flag (persistent only) |
+| `verbose` | `"--verbose"` | Verbose output flag |
+| `replayUserMessages` | `"--replay-user-messages"` | Replay user messages (persistent only) |
+| `includePartialMessages` | `"--include-partial-messages"` | Include partial messages (persistent only) |
+| `effort` | `"--effort"` | Effort level flag |
+| `workspace` | `"--workspace"` | Workspace/cwd flag (one-shot only) |
+| `extra` | `["--trust"]` | Additional static arguments |
+
+### Example: Persistent mode (Claude Code-compatible CLI)
+
+```typescript
+await manager.startSession({
+  name: 'my-agent-task',
+  engine: 'custom',
+  cwd: '/project',
+  customEngine: {
+    name: 'my-agent',
+    bin: 'my-agent',
+    binEnv: 'MY_AGENT_BIN',
+    persistent: true,
+    args: {
+      print: '-p',
+      outputFormat: '--output-format',
+      outputFormatValue: 'stream-json',
+      inputFormat: '--input-format',
+      inputFormatValue: 'stream-json',
+      skipPermissions: '-y',
+      permissionMode: '--permission-mode',
+      model: '--model',
+      systemPrompt: '--system-prompt',
+      appendSystemPrompt: '--append-system-prompt',
+      maxTurns: '--max-turns',
+      resume: '--resume',
+      verbose: '--verbose',
+      replayUserMessages: '--replay-user-messages',
+      includePartialMessages: '--include-partial-messages',
+    },
+    pricing: { input: 3, output: 15, cached: 0.3 },
+    contextWindow: 200_000,
+    sanitizePatterns: ['MY_API_KEY=[^\\s]+'],
+  },
+});
+```
+
+### Example: One-shot mode (simple CLI)
+
+```typescript
+await manager.startSession({
+  name: 'simple-agent-task',
+  engine: 'custom',
+  cwd: '/project',
+  customEngine: {
+    name: 'simple-agent',
+    bin: '/usr/local/bin/simple-agent',
+    persistent: false,  // default
+    args: {
+      print: '-p',
+      outputFormat: '--output-format',
+      outputFormatValue: 'stream-json',
+      skipPermissions: '--yolo',
+      model: '--model',
+      workspace: '--workspace',
+      extra: ['--no-color'],
+    },
+    permissionModes: {
+      bypassPermissions: 'yolo',
+      default: 'sandbox',
+    },
+    pricing: { input: 1, output: 5 },
+  },
+});
+```
+
+### Custom Engine in Council
+
+Custom engines work in council by setting `engine: 'custom'` and `customEngine` on the agent persona:
+
+```typescript
+manager.councilStart('Build feature X', {
+  agents: [
+    {
+      name: 'Planner',
+      emoji: '🟠',
+      persona: 'Architecture expert',
+      engine: 'custom',
+      customEngine: { name: 'my-agent', bin: 'my-agent', persistent: true, args: { ... } },
+    },
+    { name: 'Reviewer', emoji: '🔵', persona: 'Code reviewer', engine: 'claude', model: 'opus' },
+  ],
+  maxRounds: 10,
+  projectDir: '/project',
+});
+```
+
+## Adding a New Built-in Engine
+
+To add a built-in engine (for CLIs that need custom protocol handling beyond what `CustomEngineConfig` supports):
 
 1. Create `src/persistent-<engine>-session.ts` implementing `ISession`
 2. Add the engine name to `EngineType` in `src/types.ts`
 3. Add a case to `SessionManager._createSession()`
-4. Add model pricing to `MODEL_PRICING` if applicable
+4. Add model pricing to `MODELS[]` in `src/models.ts`
 
 The `ISession` interface is deliberately minimal — each engine handles its own subprocess bootstrapping, I/O protocol, and cleanup internally.
+
+For most third-party CLIs, the `custom` engine with `CustomEngineConfig` is sufficient and requires zero code changes.

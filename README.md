@@ -50,7 +50,7 @@ See [Getting Started](./skills/references/getting-started.md) for full setup gui
 
 ### Multi-Engine Sessions
 
-Drive Claude Code, OpenAI Codex, Google Gemini, and Cursor Agent through a unified `ISession` interface. Each engine manages its own subprocess, events, and cost tracking.
+Drive Claude Code, OpenAI Codex, Google Gemini, Cursor Agent, or **any custom coding CLI** through a unified `ISession` interface. Each engine manages its own subprocess, events, and cost tracking.
 
 ```typescript
 // Claude Code engine (default)
@@ -64,6 +64,19 @@ await manager.startSession({ name: 'gemini-task', engine: 'gemini', model: 'gemi
 
 // Cursor Agent engine
 await manager.startSession({ name: 'cursor-task', engine: 'cursor', model: 'sonnet-4' });
+
+// Custom engine — any coding agent CLI via config
+await manager.startSession({
+  name: 'my-task',
+  engine: 'custom',
+  cwd: '/project',
+  customEngine: {
+    name: 'my-agent',
+    bin: 'my-agent',
+    persistent: true,  // or false for one-shot
+    args: { print: '-p', outputFormat: '--output-format', outputFormatValue: 'stream-json', /* ... */ },
+  },
+});
 ```
 
 See [Multi-Engine](./skills/references/multi-engine.md) for architecture and adding new engines.
@@ -168,6 +181,7 @@ graph TD
     C --> E[Codex Engine<br/>persistent-codex-session.ts]
     C --> K[Gemini Engine<br/>persistent-gemini-session.ts]
     C --> L[Cursor Engine<br/>persistent-cursor-session.ts]
+    C --> M[Custom Engine<br/>persistent-custom-session.ts]
     C --> F[Council<br/>council.ts]
     C --> G[Inbox / Ultraplan / Ultrareview]
     F -->|git worktree per agent| D
@@ -186,6 +200,7 @@ src/
 ├── persistent-codex-session.ts # Codex engine (ISession)
 ├── persistent-gemini-session.ts # Gemini engine (ISession)
 ├── persistent-cursor-session.ts # Cursor Agent engine (ISession)
+├── persistent-custom-session.ts # Custom engine — any CLI via config (ISession)
 ├── session-manager.ts          # Multi-session orchestration + council management
 ├── council.ts                  # Multi-agent council orchestration
 ├── consensus.ts                # Consensus vote parsing
@@ -202,7 +217,7 @@ skills/
 └── references/                 # All documentation (progressive disclosure)
     ├── getting-started.md      # Installation, configuration, first session
     ├── sessions.md             # Persistent sessions, resume, cost tracking
-    ├── multi-engine.md         # Claude + Codex + Gemini engines
+    ├── multi-engine.md         # Claude + Codex + Gemini + Cursor + Custom engines
     ├── council.md              # Multi-agent collaboration protocol
     ├── tools.md                # Complete 27-tool API reference
     ├── inbox.md                # Cross-session messaging
@@ -226,6 +241,7 @@ All engines are tested and verified in each release:
 | OpenAI Codex | `codex` | 0.118.0 | `codex exec --full-auto`, per-message | **Fully supported** |
 | Google Gemini | `gemini` | 0.36.0 | `gemini -p --output-format stream-json`, per-message | **Fully supported** |
 | Cursor Agent | `agent` | 2026.03.30 | `agent -p --force --output-format stream-json`, per-message | **Fully supported** |
+| Custom | User-configured | Any | User-defined via `CustomEngineConfig` | **Fully supported** |
 
 > **Note:** CLI versions evolve independently. If a new CLI version changes its flags or output format, the plugin may need an update. Pin your CLI versions in CI to avoid surprises.
 
@@ -233,6 +249,7 @@ All engines are tested and verified in each release:
 
 - **Team tools** (`team_list`, `team_send`) work on all engines: Claude uses native agent teams; Codex/Gemini/Cursor use cross-session messaging as a virtual team layer
 - **Codex/Gemini/Cursor sessions** are one-shot per message (no persistent subprocess) — context is carried via working directory, not conversation history
+- **Custom engine** event parsing assumes stream-json NDJSON format compatible with Claude Code / Gemini / Cursor CLI output; CLIs with proprietary output formats may need a built-in engine instead
 - **Council consensus** requires agents to output an explicit `[CONSENSUS: YES/NO]` tag — loose phrasing will default to NO
 - **Inbox delivered messages** are not retained in inbox history (only queued messages appear)
 

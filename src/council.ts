@@ -463,6 +463,7 @@ export class Council extends EventEmitter {
           appendSystemPrompt: systemPrompt,
           maxTurns: this.config.maxTurnsPerAgent || DEFAULT_MAX_TURNS_PER_AGENT,
           maxBudgetUsd: this.config.maxBudgetUsd,
+          customEngine: agent.customEngine,
         });
 
         // Send the prompt and wait for completion

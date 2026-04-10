@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.10.0] - 2026-04-10
+
+### Added
+- **Custom Engine (`engine: 'custom'`)** — integrate any coding agent CLI without writing engine-specific code. Users provide a `CustomEngineConfig` that maps CLI flags to OpenClaw session concepts. Supports two modes:
+  - **Persistent** (`persistent: true`) — long-running subprocess with stream-json I/O over stdin/stdout (for Claude Code-compatible CLIs)
+  - **One-shot** (`persistent: false`, default) — new process per `send()` (for simpler CLIs)
+- Full config surface: binary path, flag mappings, permission mode translation, pricing, context window, env vars, stderr sanitization patterns
+- Custom engines work in **council** — set `engine: 'custom'` + `customEngine` on agent personas
+- New source file: `src/persistent-custom-session.ts` implementing `ISession`
+- New type: `CustomEngineConfig` in `src/types.ts`
+- New export: `PersistentCustomSession` from package entry point
+
 ## [2.9.4] - 2026-04-09
 
 ### Fixed

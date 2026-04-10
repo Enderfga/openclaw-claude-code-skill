@@ -12,7 +12,7 @@ Start a persistent coding session with full CLI flag support.
 |-----------|------|-------------|
 | `name` | string | Session name (auto-generated if omitted) |
 | `cwd` | string | Working directory |
-| `engine` | `'claude'` \| `'codex'` \| `'gemini'` \| `'cursor'` | Engine to use (default: `claude`) |
+| `engine` | `'claude'` \| `'codex'` \| `'gemini'` \| `'cursor'` \| `'custom'` | Engine to use (default: `claude`). Use `custom` with `customEngine` for any CLI. |
 | `model` | string | Model alias or full name |
 | `permissionMode` | string | `acceptEdits`, `bypassPermissions`, `plan`, `auto`, `default` |
 | `effort` | string | `low`, `medium`, `high`, `max`, `auto` |
@@ -35,6 +35,7 @@ Start a persistent coding session with full CLI flag support.
 | `betas` | string \| string[] | Custom beta headers |
 | `enableAgentTeams` | boolean | Enable experimental agent teams |
 | `enableAutoMode` | boolean | Enable auto permission mode |
+| `customEngine` | object | Custom engine config (required when `engine='custom'`). See [Multi-Engine: Custom Engine](./multi-engine.md#custom-engine-enginecustom). |
 
 ### `claude_session_send`
 

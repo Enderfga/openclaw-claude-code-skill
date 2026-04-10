@@ -117,6 +117,7 @@ import { PersistentClaudeSession } from './persistent-session.js';
 import { PersistentGeminiSession } from './persistent-gemini-session.js';
 import { PersistentCodexSession } from './persistent-codex-session.js';
 import { PersistentCursorSession } from './persistent-cursor-session.js';
+import { PersistentCustomSession } from './persistent-custom-session.js';
 import {
   type SessionConfig,
   type SessionInfo,
@@ -1177,6 +1178,9 @@ export class SessionManager {
         return new PersistentCodexSession(config, process.env.CODEX_BIN);
       case 'cursor':
         return new PersistentCursorSession(config, process.env.CURSOR_BIN);
+      case 'custom':
+        if (!config.customEngine) throw new Error('customEngine config is required for engine type "custom"');
+        return new PersistentCustomSession(config);
       case 'claude':
       default:
         return new PersistentClaudeSession(config, this.pluginConfig.claudeBin);

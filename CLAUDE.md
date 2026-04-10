@@ -15,6 +15,7 @@ managed session layer. Key source files:
 | `src/persistent-codex-session.ts` | Codex CLI wrapper (`codex exec --full-auto`) |
 | `src/persistent-gemini-session.ts` | Gemini CLI wrapper (`gemini -p --output-format stream-json`) |
 | `src/persistent-cursor-session.ts` | Cursor Agent CLI wrapper (`agent -p --force --output-format stream-json`) |
+| `src/persistent-custom-session.ts` | Custom engine — any CLI via user-provided `CustomEngineConfig` |
 | `src/council.ts` | Multi-agent collaboration engine with git worktree isolation and post-processing |
 | `src/consensus.ts` | Consensus voting parser for council |
 | `src/models.ts` | Centralized model registry — pricing, aliases, engine/provider mapping |

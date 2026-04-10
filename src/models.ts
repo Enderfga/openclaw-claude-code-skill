@@ -9,7 +9,7 @@ import type { EngineType } from './types.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-export type ProviderName = 'anthropic' | 'openai' | 'google' | 'cursor';
+export type ProviderName = 'anthropic' | 'openai' | 'google' | 'cursor' | 'custom';
 
 export interface ModelPricing {
   input: number; // per 1M tokens

@@ -22,6 +22,7 @@ export { PersistentClaudeSession } from './persistent-session.js';
 export { PersistentCodexSession } from './persistent-codex-session.js';
 export { PersistentGeminiSession } from './persistent-gemini-session.js';
 export { PersistentCursorSession } from './persistent-cursor-session.js';
+export { PersistentCustomSession } from './persistent-custom-session.js';
 export { Council, getDefaultCouncilConfig } from './council.js';
 export { parseConsensus, stripConsensusTags, hasConsensusMarker } from './consensus.js';
 export { sanitizeCwd, validateRegex, validateName } from './validation.js';
@@ -123,7 +124,7 @@ const plugin = {
     api.registerTool({
       name: 'claude_session_start',
       description:
-        'Start a persistent coding session. Supports multiple engines: claude (default) for Claude Code CLI, codex for OpenAI Codex CLI, gemini for Google Gemini CLI, cursor for Cursor Agent CLI.',
+        'Start a persistent coding session. Supports multiple engines: claude (default) for Claude Code CLI, codex for OpenAI Codex CLI, gemini for Google Gemini CLI, cursor for Cursor Agent CLI, or custom for any user-configured coding agent CLI.',
       parameters: {
         type: 'object',
         properties: {
@@ -131,8 +132,8 @@ const plugin = {
           cwd: { type: 'string', description: 'Working directory' },
           engine: {
             type: 'string',
-            enum: ['claude', 'codex', 'gemini', 'cursor'],
-            description: 'Engine to use (default: claude)',
+            enum: ['claude', 'codex', 'gemini', 'cursor', 'custom'],
+            description: 'Engine to use (default: claude). Use "custom" with customEngine config for any CLI.',
           },
           model: { type: 'string', description: 'Model to use (opus, sonnet, haiku, gemini-pro, o4-mini, etc.)' },
           permissionMode: {
@@ -158,6 +159,57 @@ const plugin = {
           betas: { type: ['string', 'array'], items: { type: 'string' }, description: 'Custom beta headers' },
           enableAgentTeams: { type: 'boolean', description: 'Enable experimental agent teams' },
           enableAutoMode: { type: 'boolean', description: 'Enable auto permission mode' },
+          customEngine: {
+            type: 'object',
+            description:
+              'Custom engine config (required when engine="custom"). Defines how to invoke any coding agent CLI.',
+            properties: {
+              name: { type: 'string', description: 'Engine display name' },
+              bin: { type: 'string', description: 'Binary path or command' },
+              binEnv: { type: 'string', description: 'Env var that overrides bin' },
+              persistent: {
+                type: 'boolean',
+                description: 'true=long-running subprocess (Claude Code style), false=spawn per send (default)',
+              },
+              args: {
+                type: 'object',
+                description: 'CLI flag mappings',
+                properties: {
+                  print: { type: 'string' },
+                  outputFormat: { type: 'string' },
+                  outputFormatValue: { type: 'string' },
+                  inputFormat: { type: 'string' },
+                  inputFormatValue: { type: 'string' },
+                  skipPermissions: { type: 'string' },
+                  permissionMode: { type: 'string' },
+                  model: { type: 'string' },
+                  systemPrompt: { type: 'string' },
+                  appendSystemPrompt: { type: 'string' },
+                  maxTurns: { type: 'string' },
+                  resume: { type: 'string' },
+                  verbose: { type: 'string' },
+                  replayUserMessages: { type: 'string' },
+                  includePartialMessages: { type: 'string' },
+                  effort: { type: 'string' },
+                  workspace: { type: 'string' },
+                  extra: { type: 'array', items: { type: 'string' } },
+                },
+              },
+              permissionModes: { type: 'object', description: 'Map OpenClaw permission names to CLI values' },
+              pricing: {
+                type: 'object',
+                properties: {
+                  input: { type: 'number' },
+                  output: { type: 'number' },
+                  cached: { type: 'number' },
+                },
+              },
+              contextWindow: { type: 'number' },
+              env: { type: 'object', description: 'Extra environment variables' },
+              sanitizePatterns: { type: 'array', items: { type: 'string' } },
+            },
+            required: ['name', 'bin', 'args'],
+          },
           resumeSessionId: {
             type: 'string',
             description:
@@ -457,11 +509,12 @@ const plugin = {
                 persona: { type: 'string', description: 'Agent personality/expertise description' },
                 engine: {
                   type: 'string',
-                  enum: ['claude', 'codex', 'gemini', 'cursor'],
-                  description: 'Engine (default: claude)',
+                  enum: ['claude', 'codex', 'gemini', 'cursor', 'custom'],
+                  description: 'Engine (default: claude). Use "custom" with customEngine for any CLI.',
                 },
                 model: { type: 'string', description: 'Model to use' },
                 baseUrl: { type: 'string', description: 'Custom API endpoint (for proxy)' },
+                customEngine: { type: 'object', description: 'Custom engine config (when engine="custom")' },
               },
               required: ['name', 'emoji', 'persona'],
             },

@@ -33,7 +33,129 @@ export type EffortLevel = 'low' | 'medium' | 'high' | 'max' | 'auto';
 
 // ─── Engine ─────────────────────────────────────────────────────────────────
 
-export type EngineType = 'claude' | 'codex' | 'gemini' | 'cursor';
+export type EngineType = 'claude' | 'codex' | 'gemini' | 'cursor' | 'custom';
+
+// ─── Custom Engine Config ───────────────────────────────────────────────────
+//
+// Allows users to plug in any coding agent CLI (internal or third-party)
+// without writing engine-specific code. The config describes how to invoke
+// the CLI binary and map its flags to OpenClaw session concepts.
+//
+// Two protocol modes:
+//   persistent  — long-running subprocess with stream-json I/O over stdin/stdout
+//                 (like Claude Code: start once, send messages as JSON lines)
+//   one-shot    — spawn a new process per send(), message passed as CLI argument
+//                 (like Gemini/Codex: each send is a fresh invocation)
+
+export interface CustomEngineConfig {
+  /** Display name for this engine (used in logs and session IDs) */
+  name: string;
+
+  /** Binary path or command name, e.g. 'my-agent' or '/usr/local/bin/my-agent' */
+  bin: string;
+
+  /**
+   * Environment variable name that overrides `bin` at runtime.
+   * e.g. 'MY_AGENT_BIN' → process.env.MY_AGENT_BIN takes precedence.
+   */
+  binEnv?: string;
+
+  /**
+   * true  = persistent subprocess (Claude Code style: start once, JSON I/O on stdin/stdout)
+   * false = one-shot per send (Gemini/Codex style: spawn per message)
+   * @default false
+   */
+  persistent?: boolean;
+
+  /**
+   * CLI flag mappings. Each key is an OpenClaw concept; the value is the CLI
+   * flag string your agent expects. Omit any flag your CLI doesn't support.
+   *
+   * Example for a Claude Code-compatible CLI:
+   * ```json
+   * {
+   *   "print": "-p",
+   *   "outputFormat": "--output-format",
+   *   "outputFormatValue": "stream-json",
+   *   "inputFormat": "--input-format",
+   *   "inputFormatValue": "stream-json",
+   *   "skipPermissions": "-y",
+   *   "permissionMode": "--permission-mode",
+   *   "model": "--model",
+   *   "systemPrompt": "--system-prompt",
+   *   "appendSystemPrompt": "--append-system-prompt",
+   *   "maxTurns": "--max-turns",
+   *   "resume": "--resume",
+   *   "verbose": "--verbose",
+   *   "replayUserMessages": "--replay-user-messages",
+   *   "includePartialMessages": "--include-partial-messages"
+   * }
+   * ```
+   */
+  args: {
+    /** Flag for non-interactive / print mode, e.g. '-p' */
+    print?: string;
+    /** Flag for output format, e.g. '--output-format' */
+    outputFormat?: string;
+    /** Value for stream-json output format, e.g. 'stream-json' */
+    outputFormatValue?: string;
+    /** Flag for input format (persistent mode only), e.g. '--input-format' */
+    inputFormat?: string;
+    /** Value for stream-json input format, e.g. 'stream-json' */
+    inputFormatValue?: string;
+    /** Flag to skip all permissions, e.g. '-y' or '--dangerously-skip-permissions' */
+    skipPermissions?: string;
+    /** Flag for permission mode, e.g. '--permission-mode' */
+    permissionMode?: string;
+    /** Flag for model selection, e.g. '--model' */
+    model?: string;
+    /** Flag for system prompt override, e.g. '--system-prompt' */
+    systemPrompt?: string;
+    /** Flag for appending to system prompt, e.g. '--append-system-prompt' */
+    appendSystemPrompt?: string;
+    /** Flag for max agent turns, e.g. '--max-turns' */
+    maxTurns?: string;
+    /** Flag for resuming a session, e.g. '--resume' */
+    resume?: string;
+    /** Flag for verbose output, e.g. '--verbose' */
+    verbose?: string;
+    /** Flag for replaying user messages, e.g. '--replay-user-messages' (persistent only) */
+    replayUserMessages?: string;
+    /** Flag for including partial messages, e.g. '--include-partial-messages' (persistent only) */
+    includePartialMessages?: string;
+    /** Flag for effort level, e.g. '--effort' */
+    effort?: string;
+    /** Flag for workspace/cwd, e.g. '--workspace' (one-shot only; overrides cwd) */
+    workspace?: string;
+    /** Additional static arguments always appended to the CLI invocation */
+    extra?: string[];
+  };
+
+  /**
+   * Maps OpenClaw permission mode names to CLI-specific values.
+   * e.g. { bypassPermissions: 'yolo', default: 'sandbox' }
+   * If omitted, mode names are passed through as-is.
+   */
+  permissionModes?: Record<string, string>;
+
+  /**
+   * Default pricing per 1M tokens (for cost estimation when model is unknown).
+   * Falls back to { input: 0, output: 0 } if omitted.
+   */
+  pricing?: { input: number; output: number; cached?: number };
+
+  /** Context window size in tokens. @default 200000 */
+  contextWindow?: number;
+
+  /** Extra environment variables to set when spawning the CLI process */
+  env?: Record<string, string>;
+
+  /**
+   * Regex patterns to sanitize from stderr output (e.g. API key patterns).
+   * Applied as global replacements with '***'.
+   */
+  sanitizePatterns?: string[];
+}
 
 // ─── Session Config ──────────────────────────────────────────────────────────
 
@@ -82,6 +204,8 @@ export interface SessionConfig {
   noSessionPersistence?: boolean;
   betas?: string | string[];
   enableAgentTeams?: boolean;
+  /** Custom engine configuration — required when engine is 'custom' */
+  customEngine?: CustomEngineConfig;
 }
 
 // ─── Session Stats ───────────────────────────────────────────────────────────
@@ -375,6 +499,7 @@ export interface AgentPersona {
   model?: string;
   baseUrl?: string;
   permissionMode?: PermissionMode;
+  customEngine?: CustomEngineConfig;
 }
 
 export interface CouncilConfig {
