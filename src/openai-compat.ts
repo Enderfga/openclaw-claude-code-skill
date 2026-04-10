@@ -341,11 +341,6 @@ export async function handleChatCompletion(
       engine,
       model: resolvedModel,
       permissionMode: 'bypassPermissions',
-      // Disable all CLI tools — openai-compat is a pure LLM proxy.
-      // OpenClaw has its own tool system; letting the CLI also run tools
-      // causes double-tool conflicts (CLI executes commands autonomously
-      // on the host machine instead of returning tool_calls to OpenClaw).
-      tools: '',
       // OpenAI-compat sessions must NOT persist to disk or auto-resume from
       // disk. Reasons:
       // 1. A poisoned session (e.g. from a previous ENOENT/crash) would be
@@ -365,8 +360,19 @@ export async function handleChatCompletion(
       skipPersistence: true,
     };
     // Claude Code CLI supports --append-system-prompt natively.
-    if (extracted.systemPrompt && engine === 'claude') {
-      sessionConfig.appendSystemPrompt = extracted.systemPrompt;
+    // Prepend a "no tools" directive so the CLI acts as a pure LLM proxy.
+    // CLI-level tool disabling (--tools "", --allowedTools []) is unreliable
+    // across forks (CodeBuddy hangs on blocked tools in non-interactive mode),
+    // so we instruct the model directly. This is more robust than CLI flags
+    // because the model (Opus/Sonnet) reliably follows system prompt rules.
+    const noToolsDirective =
+      'IMPORTANT: You are running as a pure LLM behind an API proxy. ' +
+      'You do NOT have access to any tools (no Bash, no Read, no Edit, no Write, no file operations). ' +
+      'Do NOT attempt to call any tools or execute any commands. ' +
+      'Respond with text only. If asked to run commands or access files, explain that you can only provide text responses.';
+    if (engine === 'claude') {
+      const callerPrompt = extracted.systemPrompt || '';
+      sessionConfig.appendSystemPrompt = callerPrompt ? `${noToolsDirective}\n\n${callerPrompt}` : noToolsDirective;
     }
     try {
       await manager.startSession(sessionConfig);
