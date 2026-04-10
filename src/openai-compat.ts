@@ -329,8 +329,10 @@ export async function handleChatCompletion(
     // OpenAI-compat sessions are API proxies, not coding sessions.
     // Use a neutral empty temp dir so the CLI doesn't load CLAUDE.md,
     // git state, or project context from wherever `serve` was started.
-    // Combined with `bare: true`, this ensures the only context the
-    // model sees is what the upstream caller injected via system prompt.
+    // The empty dir has no CLAUDE.md, no .git, no project files — so the
+    // only context the model sees is what the upstream caller injected.
+    // Note: --bare is NOT used because not all CLI forks support it
+    // (e.g. CodeBuddy exits with code 1 on unknown --bare flag).
     const sessionCwd = path.join(os.tmpdir(), `openclaw-compat-${sessionName}`);
     if (!fs.existsSync(sessionCwd)) fs.mkdirSync(sessionCwd, { recursive: true });
     const sessionConfig: Record<string, unknown> = {
@@ -339,7 +341,6 @@ export async function handleChatCompletion(
       engine,
       model: resolvedModel,
       permissionMode: 'bypassPermissions',
-      bare: true,
       // OpenAI-compat sessions must NOT persist to disk or auto-resume from
       // disk. Reasons:
       // 1. A poisoned session (e.g. from a previous ENOENT/crash) would be
