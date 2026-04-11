@@ -219,12 +219,22 @@ export function parseToolCallsFromText(text: string): ParsedToolCalls {
   const after = text.slice(lastIndex).trim();
   if (after) textParts.push(after);
 
+  // Strip <tool_result> and <tool_results> tags that the model may echo back
+  // from the serialized tool results we injected earlier.
+  const stripToolResultTags = (s: string): string =>
+    s
+      .replace(/<tool_results?>[\s\S]*?<\/tool_results?>/g, '')
+      .replace(/<tool_results?[^>]*>/g, '')
+      .trim();
+
   if (allCalls.length > 0) {
-    const combinedText = textParts.join('\n').trim() || null;
-    return { textContent: combinedText, toolCalls: allCalls };
+    const raw = textParts.join('\n').trim();
+    const cleaned = raw ? stripToolResultTags(raw) : null;
+    return { textContent: cleaned || null, toolCalls: allCalls };
   }
 
-  return { textContent: text || null, toolCalls: [] };
+  const cleaned = text ? stripToolResultTags(text) : null;
+  return { textContent: cleaned || null, toolCalls: [] };
 }
 
 /**
