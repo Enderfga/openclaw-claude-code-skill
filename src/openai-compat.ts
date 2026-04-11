@@ -151,16 +151,12 @@ export function buildToolPromptBlock(tools: OpenAIChatCompletionRequest['tools']
 
   return (
     '<available_tools>\n' +
-    'You have access to the following tools. When you need to use a tool, respond with EXACTLY ONE <tool_calls> block containing a JSON array. Put ALL tool calls for this step in a single block.\n\n' +
-    'FORMAT (one block, one array):\n' +
+    'You have access to the following tools. When you need to use a tool, respond with a JSON array wrapped in <tool_calls> tags.\n\n' +
+    'FORMAT:\n' +
     '<tool_calls>\n' +
     '[{"name": "tool_name", "arguments": {"param1": "value1"}}]\n' +
     '</tool_calls>\n\n' +
-    'RULES:\n' +
-    '- Output ONLY ONE <tool_calls> block per response, never multiple blocks\n' +
-    '- After the closing </tool_calls> tag, STOP immediately — do not write any more text\n' +
-    '- Wait for tool results before making more tool calls\n' +
-    '- If no tools are needed, respond with plain text only (no <tool_calls> tags)\n\n' +
+    'If you do NOT need any tools, respond normally with text only (no <tool_calls> tags).\n\n' +
     '## Available Tools\n\n' +
     toolDefs +
     '\n</available_tools>'
