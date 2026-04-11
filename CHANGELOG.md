@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.11.1] - 2026-04-11
+
+### Fixed
+- **openai-compat: `--system-prompt` replaces CLI default tools during function calling** — when tools are provided via the OpenAI API, the bridge now uses `--system-prompt` (replace mode) instead of `--append-system-prompt` to suppress Claude Code's built-in tools, preventing the agent from executing host tools instead of returning `tool_calls`
+- **openai-compat: `tool_calls` arguments not always valid JSON** — `parseToolCallsFromText` now ensures the `arguments` field is always a JSON string, wrapping raw values in a JSON object when needed
+- **openai-compat: only first `<tool_calls>` block parsed** — all `<tool_calls>` blocks in a response are now parsed, with output limited to one block per response to match the OpenAI protocol
+- **openai-compat: single-block restriction in tool prompt removed** — `buildToolPromptBlock` no longer restricts the prompt to a single tool definition block, allowing multi-tool prompts
+- **openai-compat: `<tool_result>` tags leaked into response content** — response text is now stripped of `<tool_result>` tags before being returned to the client
+- **openai-compat: tool results processed even when last message is not tool role** — tool result serialization now only triggers when the last non-system message has `role: 'tool'`, preventing stale tool results from being re-injected on user follow-ups
+- **openai-compat: ephemeral sessions not cleaned up** — sessions created for one-shot `/v1/chat/completions` requests without an `X-Session-Id` are now stopped immediately after the response completes
+
 ## [2.11.0] - 2026-04-10
 
 ### Added

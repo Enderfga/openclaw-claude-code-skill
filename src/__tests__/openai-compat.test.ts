@@ -521,7 +521,7 @@ describe('extractUserMessage with tool results', () => {
     expect(result.isNewConversation).toBe(false);
   });
 
-  it('combines tool results with subsequent user message', () => {
+  it('returns only user message when last message is user (tool results already in CLI history)', () => {
     const messages: OpenAIChatMessage[] = [
       { role: 'user', content: 'Search for news' },
       {
@@ -533,8 +533,8 @@ describe('extractUserMessage with tool results', () => {
       { role: 'user', content: 'Summarize the results' },
     ];
     const result = extractUserMessage(messages);
-    expect(result.userMessage).toContain('<tool_results>');
-    expect(result.userMessage).toContain('Summarize the results');
+    expect(result.userMessage).toBe('Summarize the results');
+    expect(result.userMessage).not.toContain('<tool_results>');
   });
 });
 
