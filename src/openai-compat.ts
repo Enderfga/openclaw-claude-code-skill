@@ -105,6 +105,66 @@ export interface OpenAIChatCompletionChunk {
  * responses from the wrong model. Originally diagnosed in PR #40 by
  * @megayounus786.
  */
+/**
+ * When set (to '1', 'true', 'yes'), the proxy preserves the pre-fix behavior:
+ *   - tools injected into every user message
+ *   - session key NOT fingerprinted by tools (same session across tool changes)
+ * Default (unset) is the new behavior: tools embedded in session system prompt
+ * at create time + session key fingerprinted by tools. The new behavior
+ * eliminates periodic latency spikes but does not support mutating the tool
+ * list within a single session (a new session is created when tools change).
+ */
+export function isToolsPerMessageModeEnabled(): boolean {
+  const v = process.env.OPENAI_COMPAT_TOOLS_PER_MESSAGE;
+  if (!v) return false;
+  const t = v.trim().toLowerCase();
+  return t === '1' || t === 'true' || t === 'yes';
+}
+
+/**
+ * Generate the "no built-in tools" system prompt preamble.
+ * The `toolLocation` parameter controls how the model is told where to find
+ * tool definitions — 'system' means "in the <available_tools> block below"
+ * (tools baked into system prompt), 'user' means "in <available_tools> tags
+ * in the user message" (legacy per-turn injection).
+ */
+export function noToolsSystemPrompt(toolLocation: 'system' | 'user'): string {
+  const locationHint =
+    toolLocation === 'system'
+      ? 'in the <available_tools> block below'
+      : 'in <available_tools> tags in the user message';
+  return (
+    'You are a helpful AI assistant acting as a pure LLM behind an API proxy.\n' +
+    'You do NOT have access to any tools such as Bash, Read, Write, Edit, Glob, Grep, or any other built-in tools.\n' +
+    'Do NOT attempt to call any tools or execute any commands.\n' +
+    `When you need to perform an action, use ONLY the tools defined ${locationHint}, ` +
+    'and respond with <tool_calls> tags as instructed there.\n' +
+    'If no <available_tools> are provided, respond with text only.'
+  );
+}
+
+/**
+ * Build the full session system prompt for a Claude Code session with tools.
+ * Exported for testability — called from `handleChatCompletion`.
+ *
+ * - Default mode: tools are embedded in the system prompt (cacheable by Anthropic).
+ * - Legacy mode (OPENAI_COMPAT_TOOLS_PER_MESSAGE=1): tools are NOT embedded;
+ *   they'll be injected per-turn in the user message instead.
+ */
+export function buildSessionSystemPrompt(
+  tools: OpenAIChatCompletionRequest['tools'],
+  callerSystemPrompt: string | undefined,
+): string {
+  if (isToolsPerMessageModeEnabled()) {
+    const preamble = noToolsSystemPrompt('user');
+    return callerSystemPrompt ? `${preamble}\n\n${callerSystemPrompt}` : preamble;
+  }
+  const preamble = noToolsSystemPrompt('system');
+  const toolBlock = buildToolPromptBlock(tools);
+  const systemWithTools = `${preamble}\n\n${toolBlock}`;
+  return callerSystemPrompt ? `${systemWithTools}\n\n${callerSystemPrompt}` : systemWithTools;
+}
+
 export function resolveSessionKey(body: OpenAIChatCompletionRequest, headers: http.IncomingHttpHeaders): string {
   const headerKey = headers['x-session-id'];
   if (typeof headerKey === 'string' && headerKey.trim()) return headerKey.trim();
@@ -114,11 +174,33 @@ export function resolveSessionKey(body: OpenAIChatCompletionRequest, headers: ht
     .map((m) => (typeof m.content === 'string' ? m.content : JSON.stringify(m.content)))
     .join('\n');
   const modelTag = (body.model || '').toString();
-  if (sys || modelTag) {
+  // Include a fingerprint of the tool list so that two requests with the same
+  // system prompt but different tool definitions land in different sessions.
+  // The tool schemas are baked into the session system prompt on create; if
+  // tools change we need a new session rather than re-using a stale one.
+  // Hash only tool names + a short description prefix to keep the fingerprint
+  // small and stable against schema formatting differences.
+  //
+  // Opt-out: OPENAI_COMPAT_TOOLS_PER_MESSAGE=1 restores the pre-fix behavior
+  // of keying sessions only by system prompt + model. Enable this if you have
+  // callers that mutate their tool list within one conversation and rely on
+  // continuing history across tool changes.
+  const toolsFingerprint = isToolsPerMessageModeEnabled()
+    ? ''
+    : (body.tools || [])
+        .map((t) => {
+          const fn = t?.function;
+          if (!fn?.name) return '';
+          const descPrefix = (typeof fn.description === 'string' ? fn.description : '').slice(0, 64);
+          return `${fn.name}:${descPrefix}`;
+        })
+        .filter(Boolean)
+        .join('|');
+  if (sys || modelTag || toolsFingerprint) {
     return (
       'sys-' +
       createHash('sha1')
-        .update(modelTag + '\n' + sys)
+        .update(modelTag + '\n' + sys + '\n' + toolsFingerprint)
         .digest('hex')
         .slice(0, 12)
     );
@@ -513,21 +595,11 @@ export async function handleChatCompletion(
     }
     // Claude Code CLI supports --system-prompt (replace) and --append-system-prompt (append).
     // When the caller provides tools, use --system-prompt to REPLACE the CLI's entire
-    // system prompt. This removes the CLI's built-in tool definitions (Bash, Read, Edit, etc.)
-    // so the model only sees the caller's tools via <available_tools> in the user message.
-    // --append-system-prompt doesn't work because the CLI's own tool instructions take priority.
+    // system prompt via buildSessionSystemPrompt(). See that function's doc for details
+    // on default vs legacy (OPENAI_COMPAT_TOOLS_PER_MESSAGE=1) behavior.
     if (engine === 'claude') {
       if (request.tools?.length) {
-        const noToolsPrompt =
-          'You are a helpful AI assistant acting as a pure LLM behind an API proxy.\n' +
-          'You do NOT have access to any tools such as Bash, Read, Write, Edit, Glob, Grep, or any other built-in tools.\n' +
-          'Do NOT attempt to call any tools or execute any commands.\n' +
-          'When you need to perform an action, use ONLY the tools defined in <available_tools> tags in the user message, ' +
-          'and respond with <tool_calls> tags as instructed there.\n' +
-          'If no <available_tools> are provided, respond with text only.';
-        sessionConfig.systemPrompt = extracted.systemPrompt
-          ? `${noToolsPrompt}\n\n${extracted.systemPrompt}`
-          : noToolsPrompt;
+        sessionConfig.systemPrompt = buildSessionSystemPrompt(request.tools, extracted.systemPrompt);
       } else if (extracted.systemPrompt) {
         sessionConfig.appendSystemPrompt = extracted.systemPrompt;
       }
@@ -568,9 +640,23 @@ export async function handleChatCompletion(
     userMessage = `<system>\n${extracted.systemPrompt}\n</system>\n\n${userMessage}`;
   }
 
-  // Inject tool definitions into the user message
+  // Inject tool definitions into the user message.
+  //
+  // Default path for Claude Code: tools are already embedded in the session
+  // system prompt (see session create block above) — do NOT re-inject them
+  // per turn. Repeatedly prepending a large <available_tools> block to every
+  // user message bloats each turn's input, defeats Anthropic prompt caching,
+  // and was the cause of periodic 30-50s latency spikes.
+  //
+  // Opt-out path for Claude Code (OPENAI_COMPAT_TOOLS_PER_MESSAGE=1): fall
+  // back to the legacy behavior of injecting the tool block into each user
+  // message. Enables dynamic tool list updates within a single session.
+  //
+  // Non-claude engines: the CLI is spawned fresh per turn with no persistent
+  // system prompt, so tools must always be injected per message.
   const hasTools = !!request.tools?.length;
-  if (hasTools) {
+  const injectToolsPerTurn = hasTools && (engine !== 'claude' || isToolsPerMessageModeEnabled());
+  if (injectToolsPerTurn) {
     const toolBlock = buildToolPromptBlock(request.tools);
     userMessage = `${toolBlock}\n\n${userMessage}`;
   }

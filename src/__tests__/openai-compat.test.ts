@@ -12,6 +12,9 @@ import {
   buildToolPromptBlock,
   parseToolCallsFromText,
   serializeToolResults,
+  isToolsPerMessageModeEnabled,
+  noToolsSystemPrompt,
+  buildSessionSystemPrompt,
 } from '../openai-compat.js';
 import { resolveEngineAndModel, getModelList } from '../models.js';
 import type { OpenAIChatMessage } from '../openai-compat.js';
@@ -67,6 +70,16 @@ describe('resolveEngineAndModel', () => {
 // ─── resolveSessionKey ───────────────────────────────────────────────────────
 
 describe('resolveSessionKey', () => {
+  let savedToolsPerMessage: string | undefined;
+  beforeEach(() => {
+    savedToolsPerMessage = process.env.OPENAI_COMPAT_TOOLS_PER_MESSAGE;
+    delete process.env.OPENAI_COMPAT_TOOLS_PER_MESSAGE;
+  });
+  afterEach(() => {
+    if (savedToolsPerMessage === undefined) delete process.env.OPENAI_COMPAT_TOOLS_PER_MESSAGE;
+    else process.env.OPENAI_COMPAT_TOOLS_PER_MESSAGE = savedToolsPerMessage;
+  });
+
   it('prefers X-Session-Id header', () => {
     const key = resolveSessionKey({ messages: [], user: 'user-1' }, { 'x-session-id': 'my-session' });
     expect(key).toBe('my-session');
@@ -158,6 +171,194 @@ describe('resolveSessionKey', () => {
   it('hashes model alone when there is no system prompt', () => {
     const key = resolveSessionKey({ model: 'claude-opus-4-6', messages: [{ role: 'user', content: 'hi' }] }, {});
     expect(key).toMatch(/^sys-[0-9a-f]{12}$/);
+  });
+
+  it('produces distinct keys when system prompt is identical but tools differ', () => {
+    const base = {
+      model: 'claude-sonnet-4-6',
+      messages: [
+        { role: 'system' as const, content: 'SAME' },
+        { role: 'user' as const, content: 'hi' },
+      ],
+    };
+    const withToolsA = resolveSessionKey(
+      {
+        ...base,
+        tools: [{ type: 'function', function: { name: 'foo', description: 'does foo', parameters: {} } }],
+      },
+      {},
+    );
+    const withToolsB = resolveSessionKey(
+      {
+        ...base,
+        tools: [{ type: 'function', function: { name: 'bar', description: 'does bar', parameters: {} } }],
+      },
+      {},
+    );
+    const withoutTools = resolveSessionKey(base, {});
+    expect(withToolsA).not.toBe(withToolsB);
+    expect(withToolsA).not.toBe(withoutTools);
+    expect(withToolsB).not.toBe(withoutTools);
+  });
+
+  it('produces the same key for identical tool lists across calls', () => {
+    const body = {
+      model: 'claude-sonnet-4-6',
+      messages: [
+        { role: 'system' as const, content: 'SAME' },
+        { role: 'user' as const, content: 'hi' },
+      ],
+      tools: [
+        { type: 'function', function: { name: 'foo', description: 'does foo', parameters: {} } },
+        { type: 'function', function: { name: 'bar', description: 'does bar', parameters: {} } },
+      ],
+    };
+    expect(resolveSessionKey(body, {})).toBe(resolveSessionKey(body, {}));
+  });
+
+  it('ignores tools in the key when OPENAI_COMPAT_TOOLS_PER_MESSAGE=1 (legacy opt-out)', () => {
+    process.env.OPENAI_COMPAT_TOOLS_PER_MESSAGE = '1';
+    const base = {
+      model: 'claude-sonnet-4-6',
+      messages: [
+        { role: 'system' as const, content: 'SAME' },
+        { role: 'user' as const, content: 'hi' },
+      ],
+    };
+    const withToolsA = resolveSessionKey(
+      {
+        ...base,
+        tools: [{ type: 'function', function: { name: 'foo', description: 'does foo', parameters: {} } }],
+      },
+      {},
+    );
+    const withToolsB = resolveSessionKey(
+      {
+        ...base,
+        tools: [{ type: 'function', function: { name: 'bar', description: 'does bar', parameters: {} } }],
+      },
+      {},
+    );
+    const withoutTools = resolveSessionKey(base, {});
+    // With the opt-out enabled, the tool list is NOT part of the session key,
+    // so all three bodies collapse to the same key (the pre-fix behavior).
+    expect(withToolsA).toBe(withToolsB);
+    expect(withToolsA).toBe(withoutTools);
+  });
+});
+
+// ─── isToolsPerMessageModeEnabled ────────────────────────────────────────────
+
+describe('isToolsPerMessageModeEnabled', () => {
+  let saved: string | undefined;
+  beforeEach(() => {
+    saved = process.env.OPENAI_COMPAT_TOOLS_PER_MESSAGE;
+    delete process.env.OPENAI_COMPAT_TOOLS_PER_MESSAGE;
+  });
+  afterEach(() => {
+    if (saved === undefined) delete process.env.OPENAI_COMPAT_TOOLS_PER_MESSAGE;
+    else process.env.OPENAI_COMPAT_TOOLS_PER_MESSAGE = saved;
+  });
+
+  it('defaults to false when the env var is unset', () => {
+    expect(isToolsPerMessageModeEnabled()).toBe(false);
+  });
+
+  it('returns true for "1", "true", "yes" (case-insensitive, trimmed)', () => {
+    for (const v of ['1', 'true', 'yes', 'TRUE', ' Yes ', 'YES']) {
+      process.env.OPENAI_COMPAT_TOOLS_PER_MESSAGE = v;
+      expect(isToolsPerMessageModeEnabled()).toBe(true);
+    }
+  });
+
+  it('returns false for "0", "false", "no", unknown values', () => {
+    for (const v of ['0', 'false', 'no', 'off', 'maybe', '']) {
+      process.env.OPENAI_COMPAT_TOOLS_PER_MESSAGE = v;
+      expect(isToolsPerMessageModeEnabled()).toBe(false);
+    }
+  });
+});
+
+// ─── noToolsSystemPrompt ─────────────────────────────────────────────────────
+
+describe('noToolsSystemPrompt', () => {
+  it('references "block below" for system location', () => {
+    const prompt = noToolsSystemPrompt('system');
+    expect(prompt).toContain('block below');
+    expect(prompt).not.toContain('in the user message');
+  });
+
+  it('references "user message" for user location', () => {
+    const prompt = noToolsSystemPrompt('user');
+    expect(prompt).toContain('in the user message');
+    expect(prompt).not.toContain('block below');
+  });
+
+  it('always contains the no-tools preamble', () => {
+    for (const loc of ['system', 'user'] as const) {
+      const prompt = noToolsSystemPrompt(loc);
+      expect(prompt).toContain('You do NOT have access to any tools');
+      expect(prompt).toContain('<tool_calls>');
+    }
+  });
+});
+
+// ─── buildSessionSystemPrompt ────────────────────────────────────────────────
+
+describe('buildSessionSystemPrompt', () => {
+  let saved: string | undefined;
+  beforeEach(() => {
+    saved = process.env.OPENAI_COMPAT_TOOLS_PER_MESSAGE;
+    delete process.env.OPENAI_COMPAT_TOOLS_PER_MESSAGE;
+  });
+  afterEach(() => {
+    if (saved === undefined) delete process.env.OPENAI_COMPAT_TOOLS_PER_MESSAGE;
+    else process.env.OPENAI_COMPAT_TOOLS_PER_MESSAGE = saved;
+  });
+
+  const sampleTools = [
+    {
+      type: 'function' as const,
+      function: {
+        name: 'get_weather',
+        description: 'Get weather for a city',
+        parameters: { type: 'object', properties: { city: { type: 'string' } } },
+      },
+    },
+  ];
+
+  it('default mode: embeds <available_tools> in the system prompt', () => {
+    const result = buildSessionSystemPrompt(sampleTools, undefined);
+    expect(result).toContain('<available_tools>');
+    expect(result).toContain('get_weather');
+    expect(result).toContain('block below');
+  });
+
+  it('default mode: appends caller system prompt after tools', () => {
+    const result = buildSessionSystemPrompt(sampleTools, 'You are a weather bot.');
+    expect(result).toContain('<available_tools>');
+    expect(result).toContain('You are a weather bot.');
+    // Caller prompt comes after tool block
+    const toolIdx = result.indexOf('<available_tools>');
+    const callerIdx = result.indexOf('You are a weather bot.');
+    expect(callerIdx).toBeGreaterThan(toolIdx);
+  });
+
+  it('legacy mode: does NOT embed tool definitions in system prompt', () => {
+    process.env.OPENAI_COMPAT_TOOLS_PER_MESSAGE = '1';
+    const result = buildSessionSystemPrompt(sampleTools, undefined);
+    // The tool block (with actual tool definitions) should NOT be present
+    expect(result).not.toContain('get_weather');
+    expect(result).not.toContain('## Available Tools');
+    // But the preamble still references user message location
+    expect(result).toContain('in the user message');
+  });
+
+  it('legacy mode: still includes caller system prompt', () => {
+    process.env.OPENAI_COMPAT_TOOLS_PER_MESSAGE = '1';
+    const result = buildSessionSystemPrompt(sampleTools, 'You are a weather bot.');
+    expect(result).not.toContain('get_weather');
+    expect(result).toContain('You are a weather bot.');
   });
 });
 
