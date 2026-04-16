@@ -214,6 +214,32 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
       for (const b of bl) args.push('--betas', b.trim());
     }
 
+    // CLI 2.1.111 features
+    if (this.options.includeHookEvents) args.push('--include-hook-events');
+    if (this.options.permissionPromptTool) args.push('--permission-prompt-tool', this.options.permissionPromptTool);
+
+    // Smart default: bare mode auto-enables exclude-dynamic-system-prompt-sections for better cache hits
+    const shouldExcludeDynamic = this.options.excludeDynamicSystemPromptSections === true
+      || (this.options.bare && this.options.excludeDynamicSystemPromptSections !== false);
+    if (shouldExcludeDynamic) args.push('--exclude-dynamic-system-prompt-sections');
+
+    if (this.options.debug) {
+      const cats = Array.isArray(this.options.debug) ? this.options.debug.join(',') : this.options.debug;
+      args.push('--debug', cats);
+    }
+    if (this.options.debugFile) args.push('--debug-file', this.options.debugFile);
+    if (this.options.fromPr) args.push('--from-pr', this.options.fromPr);
+    if (this.options.channels) {
+      const ch = Array.isArray(this.options.channels) ? this.options.channels : [this.options.channels];
+      for (const c of ch) args.push('--channels', c);
+    }
+    if (this.options.dangerouslyLoadDevelopmentChannels) {
+      const ch = Array.isArray(this.options.dangerouslyLoadDevelopmentChannels)
+        ? this.options.dangerouslyLoadDevelopmentChannels
+        : [this.options.dangerouslyLoadDevelopmentChannels];
+      for (const c of ch) args.push('--dangerously-load-development-channels', c);
+    }
+
     // Ensure CWD exists (normalize to prevent path traversal)
     if (this.options.cwd) {
       this.options.cwd = path.resolve(this.options.cwd);
@@ -231,6 +257,11 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
     };
     if (this.options.baseUrl) spawnEnv.ANTHROPIC_BASE_URL = this.options.baseUrl;
     if (this.options.enableAgentTeams) spawnEnv.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS = 'true';
+    // Smart default: bare mode auto-enables 1H prompt caching
+    if (this.options.enablePromptCaching1H === true
+      || (this.options.bare && this.options.enablePromptCaching1H !== false)) {
+      spawnEnv.ENABLE_PROMPT_CACHING_1H = '1';
+    }
     if (this._realModel && this.options.baseUrl) {
       const base = this.options.baseUrl.replace(/\/$/, '');
       spawnEnv.ANTHROPIC_BASE_URL = `${base}/real/${this._realModel}`;

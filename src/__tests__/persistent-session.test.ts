@@ -166,6 +166,145 @@ describe('PersistentClaudeSession', () => {
       expect(args).toContain('--model');
       expect(args).toContain('opus');
     });
+
+    it('includes --include-hook-events when set', async () => {
+      session = new PersistentClaudeSession(makeConfig({ includeHookEvents: true }));
+      const { spawn } = await import('node:child_process');
+      const startPromise = session.start();
+      emitInitEvent(mockProc);
+      await startPromise;
+      const args = vi.mocked(spawn).mock.calls.at(-1)![1] as string[];
+      expect(args).toContain('--include-hook-events');
+    });
+
+    it('includes --permission-prompt-tool when set', async () => {
+      session = new PersistentClaudeSession(makeConfig({ permissionPromptTool: 'mcp__auth__decide' }));
+      const { spawn } = await import('node:child_process');
+      const startPromise = session.start();
+      emitInitEvent(mockProc);
+      await startPromise;
+      const args = vi.mocked(spawn).mock.calls.at(-1)![1] as string[];
+      expect(args).toContain('--permission-prompt-tool');
+      expect(args).toContain('mcp__auth__decide');
+    });
+
+    it('includes --exclude-dynamic-system-prompt-sections when set', async () => {
+      session = new PersistentClaudeSession(makeConfig({ excludeDynamicSystemPromptSections: true }));
+      const { spawn } = await import('node:child_process');
+      const startPromise = session.start();
+      emitInitEvent(mockProc);
+      await startPromise;
+      const args = vi.mocked(spawn).mock.calls.at(-1)![1] as string[];
+      expect(args).toContain('--exclude-dynamic-system-prompt-sections');
+    });
+
+    it('auto-enables --exclude-dynamic-system-prompt-sections when bare is true', async () => {
+      session = new PersistentClaudeSession(makeConfig({ bare: true }));
+      const { spawn } = await import('node:child_process');
+      const startPromise = session.start();
+      emitInitEvent(mockProc);
+      await startPromise;
+      const args = vi.mocked(spawn).mock.calls.at(-1)![1] as string[];
+      expect(args).toContain('--exclude-dynamic-system-prompt-sections');
+    });
+
+    it('does NOT auto-enable --exclude-dynamic-system-prompt-sections when bare + explicit false', async () => {
+      session = new PersistentClaudeSession(makeConfig({ bare: true, excludeDynamicSystemPromptSections: false }));
+      const { spawn } = await import('node:child_process');
+      const startPromise = session.start();
+      emitInitEvent(mockProc);
+      await startPromise;
+      const args = vi.mocked(spawn).mock.calls.at(-1)![1] as string[];
+      expect(args).not.toContain('--exclude-dynamic-system-prompt-sections');
+    });
+
+    it('includes --debug with comma-joined categories', async () => {
+      session = new PersistentClaudeSession(makeConfig({ debug: ['api', 'mcp'] }));
+      const { spawn } = await import('node:child_process');
+      const startPromise = session.start();
+      emitInitEvent(mockProc);
+      await startPromise;
+      const args = vi.mocked(spawn).mock.calls.at(-1)![1] as string[];
+      expect(args).toContain('--debug');
+      expect(args).toContain('api,mcp');
+    });
+
+    it('includes --debug-file when set', async () => {
+      session = new PersistentClaudeSession(makeConfig({ debugFile: '/tmp/debug.log' }));
+      const { spawn } = await import('node:child_process');
+      const startPromise = session.start();
+      emitInitEvent(mockProc);
+      await startPromise;
+      const args = vi.mocked(spawn).mock.calls.at(-1)![1] as string[];
+      expect(args).toContain('--debug-file');
+      expect(args).toContain('/tmp/debug.log');
+    });
+
+    it('includes --from-pr when set', async () => {
+      session = new PersistentClaudeSession(makeConfig({ fromPr: '42' }));
+      const { spawn } = await import('node:child_process');
+      const startPromise = session.start();
+      emitInitEvent(mockProc);
+      await startPromise;
+      const args = vi.mocked(spawn).mock.calls.at(-1)![1] as string[];
+      expect(args).toContain('--from-pr');
+      expect(args).toContain('42');
+    });
+
+    it('includes --channels for each entry', async () => {
+      session = new PersistentClaudeSession(makeConfig({ channels: ['plugin:a@market', 'plugin:b@market'] }));
+      const { spawn } = await import('node:child_process');
+      const startPromise = session.start();
+      emitInitEvent(mockProc);
+      await startPromise;
+      const args = vi.mocked(spawn).mock.calls.at(-1)![1] as string[];
+      expect(args).toContain('plugin:a@market');
+      expect(args).toContain('plugin:b@market');
+    });
+
+    it('includes --dangerously-load-development-channels when set', async () => {
+      session = new PersistentClaudeSession(makeConfig({ dangerouslyLoadDevelopmentChannels: 'server:test' }));
+      const { spawn } = await import('node:child_process');
+      const startPromise = session.start();
+      emitInitEvent(mockProc);
+      await startPromise;
+      const args = vi.mocked(spawn).mock.calls.at(-1)![1] as string[];
+      expect(args).toContain('--dangerously-load-development-channels');
+      expect(args).toContain('server:test');
+    });
+
+    it('sets ENABLE_PROMPT_CACHING_1H env var when enablePromptCaching1H is true', async () => {
+      session = new PersistentClaudeSession(makeConfig({ enablePromptCaching1H: true }));
+      const { spawn } = await import('node:child_process');
+      const startPromise = session.start();
+      emitInitEvent(mockProc);
+      await startPromise;
+      const spawnCall = vi.mocked(spawn).mock.calls.at(-1)!;
+      const env = (spawnCall[2] as { env: Record<string, string> }).env;
+      expect(env.ENABLE_PROMPT_CACHING_1H).toBe('1');
+    });
+
+    it('auto-sets ENABLE_PROMPT_CACHING_1H when bare is true', async () => {
+      session = new PersistentClaudeSession(makeConfig({ bare: true }));
+      const { spawn } = await import('node:child_process');
+      const startPromise = session.start();
+      emitInitEvent(mockProc);
+      await startPromise;
+      const spawnCall = vi.mocked(spawn).mock.calls.at(-1)!;
+      const env = (spawnCall[2] as { env: Record<string, string> }).env;
+      expect(env.ENABLE_PROMPT_CACHING_1H).toBe('1');
+    });
+
+    it('does NOT set ENABLE_PROMPT_CACHING_1H when bare + explicit false', async () => {
+      session = new PersistentClaudeSession(makeConfig({ bare: true, enablePromptCaching1H: false }));
+      const { spawn } = await import('node:child_process');
+      const startPromise = session.start();
+      emitInitEvent(mockProc);
+      await startPromise;
+      const spawnCall = vi.mocked(spawn).mock.calls.at(-1)!;
+      const env = (spawnCall[2] as { env: Record<string, string> }).env;
+      expect(env.ENABLE_PROMPT_CACHING_1H).toBeUndefined();
+    });
   });
 
   describe('_handleEvent', () => {
