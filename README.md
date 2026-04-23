@@ -269,3 +269,7 @@ All engines are tested and verified in each release:
 ## License
 
 MIT
+
+## Download History
+
+[![Download History](https://skill-history.com/chart/enderfga/openclaw-claude-code.svg)](https://skill-history.com/enderfga/openclaw-claude-code)
