@@ -269,3 +269,11 @@ All engines are tested and verified in each release:
 ## License
 
 MIT
+
+## 💰 Bounty Contribution
+
+- **Task:** [Bug] Incorrect path resolution on Windows due to import.meta.url handling
+- **Reward:** $1
+- **Source:** GitHub-Paid
+- **Date:** 2026-04-27
+
