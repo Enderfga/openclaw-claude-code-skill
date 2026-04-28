@@ -370,10 +370,7 @@ Start working!`;
 function resolveConfigPath(filename: string): string {
   const filePath = fileURLToPath(import.meta.url);
   const dir = path.dirname(filePath);
-  const candidates = [
-    path.join(dir, '..', 'configs', filename),
-    path.join(dir, '..', '..', 'configs', filename),
-  ];
+  const candidates = [path.join(dir, '..', 'configs', filename), path.join(dir, '..', '..', 'configs', filename)];
   for (const p of candidates) {
     if (fs.existsSync(p)) return p;
   }
@@ -572,7 +569,9 @@ export class Council extends EventEmitter {
     // Safety check: prevent council from running inside the program's own directory
     const moduleRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
     const resolvedProjectDir = path.resolve(this.config.projectDir);
-    if (resolvedProjectDir === moduleRoot || resolvedProjectDir.startsWith(moduleRoot + '/')) {
+    const rel = path.relative(moduleRoot, resolvedProjectDir);
+    const isInside = rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+    if (isInside) {
       throw new Error(
         `SAFETY: projectDir (${resolvedProjectDir}) is inside program root (${moduleRoot}). Refusing to start council.`,
       );
