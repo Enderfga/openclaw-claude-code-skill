@@ -147,8 +147,7 @@ claude_session_deliver_inbox({ name: "receiver" })
 
 ## Team Tools (All Engines)
 
-- **Claude**: native `/team` and `@teammate` commands
-- **Codex/Gemini/Cursor**: virtual teams via cross-session inbox routing
+All engines use the same virtual-team layer: cross-session inbox routing across active SessionManager sessions. (Claude Code's native experimental Agent Teams is in-process TUI only and not reachable from a subprocess wrapper.)
 
 ```javascript
 claude_team_list({ name: "myproject" })

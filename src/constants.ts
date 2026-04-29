@@ -42,10 +42,6 @@ export const INTER_ROUND_DELAY_MS = 3_000;
 export const EMPTY_RESPONSE_RETRY_DELAY_MS = 5_000;
 /** Timeout for council follow-up prompts */
 export const FOLLOWUP_TIMEOUT_MS = 60_000;
-/** Timeout for team list operations */
-export const TEAM_LIST_TIMEOUT_MS = 30_000;
-/** Timeout for team send operations */
-export const TEAM_SEND_TIMEOUT_MS = 120_000;
 /** Timeout for ultraplan sessions */
 export const ULTRAPLAN_TIMEOUT_MS = 1_800_000;
 /** How long completed results remain queryable */

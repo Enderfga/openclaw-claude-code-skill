@@ -251,7 +251,7 @@ All engines are tested and verified in each release:
 
 ### Known Limitations
 
-- **Team tools** (`team_list`, `team_send`) work on all engines: Claude uses native agent teams; Codex/Gemini/Cursor use cross-session messaging as a virtual team layer
+- **Team tools** (`team_list`, `team_send`) work on all engines via cross-session inbox routing as a virtual team layer. Claude Code's native experimental Agent Teams is an in-process TUI mechanism and is not reachable from a subprocess wrapper
 - **Codex/Gemini/Cursor sessions** are one-shot per message (no persistent subprocess) — context is carried via working directory, not conversation history
 - **Custom engine** event parsing assumes stream-json NDJSON format compatible with Claude Code / Gemini / Cursor CLI output; CLIs with proprietary output formats may need a built-in engine instead
 - **Council consensus** requires agents to output an explicit `[CONSENSUS: YES/NO]` tag — loose phrasing will default to NO

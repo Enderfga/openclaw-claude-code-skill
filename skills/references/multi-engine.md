@@ -149,16 +149,18 @@ interface ISession {
 
 ## Team Tools Across Engines
 
-Team tools (`team_list`, `team_send`) work on all engines with engine-appropriate implementations:
+Team tools (`team_list`, `team_send`) operate on the same virtual-team layer for **every** engine: the "team" is the set of all active sessions managed by SessionManager.
 
 | Engine | `team_list` | `team_send` |
 |--------|------------|-------------|
-| Claude | Native `/team` command | Native `@teammate` command |
+| Claude | Lists other active SessionManager sessions | Routes via cross-session inbox |
 | Codex | Lists other active SessionManager sessions | Routes via cross-session inbox |
 | Gemini | Lists other active SessionManager sessions | Routes via cross-session inbox |
 | Cursor | Lists other active SessionManager sessions | Routes via cross-session inbox |
 
-For Codex, Gemini, and Cursor, the "team" is the set of all active sessions managed by SessionManager. Messages are delivered via the inbox system — idle sessions receive immediately, busy sessions queue for later delivery.
+Messages are delivered via the inbox system — idle sessions receive immediately, busy sessions queue for later delivery.
+
+> **Note:** Claude Code does have a native experimental "Agent Teams" feature (v2.1.32+, `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`), but it is an in-process TUI mechanism with no slash command or stdin-driven messaging — a subprocess wrapper cannot access its mailbox. Plugin team tools therefore use the engine-agnostic virtual team across the board.
 
 ## Proxy: Any Model via OpenClaw Gateway
 

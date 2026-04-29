@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.14.1] - 2026-04-29
+
+### Fixed
+- **`team_list` / `team_send` on Claude engine** — earlier code assumed Claude Code CLI exposed `/team` and `@teammate` as user-facing commands. They do not. `team_list` returned `Unknown command: /team` and `team_send` sent the message as plain prose with a stray `@name` prefix. Both tools now use the same engine-agnostic virtual-team layer (cross-session inbox routing) for every engine. Claude Code's native experimental Agent Teams (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`, v2.1.32+) is an in-process TUI mechanism with no stdin-driven messaging surface, so a subprocess wrapper cannot drive it. Thanks @shendiid ([#48](https://github.com/Enderfga/openclaw-claude-code/issues/48))
+- Removed unused `TEAM_LIST_TIMEOUT_MS` and `TEAM_SEND_TIMEOUT_MS` constants
+- Updated README, SKILL.md, and `multi-engine.md` to describe the unified virtual-team behavior
+
 ## [2.14.0] - 2026-04-28
 
 ### Added — Claude Code CLI 2.1.121 sync

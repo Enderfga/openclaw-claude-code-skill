@@ -800,6 +800,55 @@ describe('SessionManager', () => {
     });
   });
 
+  // ─── Team tools (issue #48 regression guard) ────────────────────────────
+  // Claude Code CLI does not expose `/team` or `@teammate` syntax. team_list
+  // and team_send must use the virtual-team / inbox layer for every engine.
+
+  describe('teamList / teamSend (virtual team across all engines)', () => {
+    it('teamList returns virtual team list for claude engine (no /team command)', async () => {
+      await mgr.startSession({ name: 'lead', cwd: '/tmp', engine: 'claude' });
+      await mgr.startSession({ name: 'helper', cwd: '/tmp', engine: 'claude' });
+
+      const out = await mgr.teamList('lead');
+
+      expect(out).toContain('Virtual team');
+      expect(out).toContain('helper');
+      expect(out).toContain('claude');
+      // Critically, the caller's session must NOT have been sent the literal '/team' string
+      expect(mockSessions[0].sendCalls.find((c) => c.message === '/team')).toBeUndefined();
+    });
+
+    it('teamList omits the calling session and reports "No other active sessions" when alone', async () => {
+      await mgr.startSession({ name: 'solo', cwd: '/tmp', engine: 'claude' });
+      const out = await mgr.teamList('solo');
+      expect(out).toBe('No other active sessions');
+    });
+
+    it('teamSend routes via cross-session inbox for claude engine (no @teammate command)', async () => {
+      await mgr.startSession({ name: 'sender', cwd: '/tmp', engine: 'claude' });
+      await mgr.startSession({ name: 'receiver', cwd: '/tmp', engine: 'claude' });
+
+      const result = await mgr.teamSend('sender', 'receiver', 'please review');
+
+      // Sender must NOT have been sent a literal '@receiver ...' string
+      expect(
+        mockSessions[0].sendCalls.find((c) => typeof c.message === 'string' && c.message.startsWith('@')),
+      ).toBeUndefined();
+      // Receiver got a cross-session-message envelope instead
+      expect(mockSessions[1].sendCalls.length).toBe(1);
+      const msg = mockSessions[1].sendCalls[0].message as string;
+      expect(msg).toContain('<cross-session-message');
+      expect(msg).toContain('from="sender"');
+      expect(msg).toContain('please review');
+      expect(result.output).toContain('delivered');
+    });
+
+    it('teamSend throws clearly when teammate session does not exist', async () => {
+      await mgr.startSession({ name: 'lone', cwd: '/tmp', engine: 'claude' });
+      await expect(mgr.teamSend('lone', 'ghost', 'hi')).rejects.toThrow("Target session 'ghost' not found");
+    });
+  });
+
   // ─── Ultraplan ──────────────────────────────────────────────────────
 
   describe('ultraplan', () => {

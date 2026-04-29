@@ -152,8 +152,6 @@ import {
   CLEANUP_INTERVAL_MS,
   TURN_TIMEOUT_MS,
   GREP_HISTORY_FETCH,
-  TEAM_LIST_TIMEOUT_MS,
-  TEAM_SEND_TIMEOUT_MS,
   RESULT_TTL_MS,
   ULTRAPLAN_TIMEOUT_MS,
   ULTRAREVIEW_POLL_INTERVAL_MS,
@@ -741,16 +739,14 @@ export class SessionManager {
   // ─── Agent Teams ───────────────────────────────────────────────────────
 
   async teamList(name: string): Promise<string> {
-    const managed = this._getSession(name);
-    const engine = managed.config.engine || 'claude';
+    // Validate the calling session exists, but list all other sessions as virtual
+    // teammates regardless of engine. Claude Code's native Agent Teams (v2.1.32+,
+    // gated by CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS) is an in-process TUI
+    // mechanism — it has no `/team` slash command and no stdin-driven mailbox
+    // accessible to a subprocess wrapper. Earlier code assumed `/team` existed
+    // and got back `Unknown command: /team` (issue #48).
+    this._getSession(name);
 
-    // Claude: use native /team command
-    if (engine === 'claude') {
-      const result = await managed.session.send('/team', { waitForComplete: true, timeout: TEAM_LIST_TIMEOUT_MS });
-      return 'text' in result ? result.text : '';
-    }
-
-    // Codex/Gemini: list other active sessions as virtual teammates
     const teammates: string[] = [];
     for (const [sessionName, m] of this.sessions) {
       if (sessionName === name) continue;
@@ -766,23 +762,7 @@ export class SessionManager {
 
   async teamSend(name: string, teammate: string, message: string): Promise<SendResult> {
     const managed = this._getSession(name);
-    const engine = managed.config.engine || 'claude';
 
-    // Claude: use native @teammate command
-    if (engine === 'claude') {
-      managed.lastActivity = Date.now();
-      const result = await managed.session.send(`@${teammate} ${message}`, {
-        waitForComplete: true,
-        timeout: TEAM_SEND_TIMEOUT_MS,
-      });
-      return {
-        output: 'text' in result ? result.text : '',
-        sessionId: managed.claudeSessionId,
-        events: [],
-      };
-    }
-
-    // Codex/Gemini: route via cross-session messaging
     if (!this.sessions.has(teammate)) {
       throw new Error(`Target session '${teammate}' not found. Use team_list to see available sessions.`);
     }
