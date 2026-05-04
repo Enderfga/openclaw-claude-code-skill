@@ -123,10 +123,32 @@ const plugin = {
       });
     }
 
-    // ─── Tool: claude_session_start ──────────────────────────────────────
+    // ─── Tool registration helper ─────────────────────────────────────────
+    //
+    // In v3.0 we renamed the engine-coupled `claude_*` tools to engine-neutral
+    // names (`session_*`, `team_*`, etc.). The old names remain registered as
+    // deprecated aliases for one minor release and will be removed in v3.1.
+    //
+    // The alias's description is prefixed with `[DEPRECATED]` and the new
+    // name so any agent reading the tool list gets a clear hint to migrate.
+    function registerToolWithAliases(
+      def: Parameters<PluginAPI['registerTool']>[0],
+      deprecatedAliases: string[] = []
+    ): void {
+      api.registerTool(def);
+      for (const alias of deprecatedAliases) {
+        api.registerTool({
+          ...def,
+          name: alias,
+          description: `[DEPRECATED — use ${def.name}; this alias is removed in v3.1] ${def.description}`,
+        });
+      }
+    }
 
-    api.registerTool({
-      name: 'claude_session_start',
+    // ─── Tool: session_start ──────────────────────────────────────────────
+
+    registerToolWithAliases({
+      name: 'session_start',
       description:
         'Start a persistent coding session. Supports multiple engines: claude (default) for Claude Code CLI, codex for OpenAI Codex CLI, gemini for Google Gemini CLI, cursor for Cursor Agent CLI, or custom for any user-configured coding agent CLI.',
       parameters: {
@@ -284,12 +306,12 @@ const plugin = {
         const info = await getManager().startSession(sanitized as Parameters<SessionManager['startSession']>[0]);
         return { ok: true, ...info };
       },
-    });
+    }, ['claude_session_start']);
 
-    // ─── Tool: claude_session_send ───────────────────────────────────────
+    // ─── Tool: session_send ───────────────────────────────────────────────
 
-    api.registerTool({
-      name: 'claude_session_send',
+    registerToolWithAliases({
+      name: 'session_send',
       description: 'Send a message to a persistent Claude Code session and get the response',
       parameters: {
         type: 'object',
@@ -333,12 +355,12 @@ const plugin = {
           ...(wantChunks ? { chunks } : {}),
         };
       },
-    });
+    }, ['claude_session_send']);
 
-    // ─── Tool: claude_session_stop ───────────────────────────────────────
+    // ─── Tool: session_stop ───────────────────────────────────────────────
 
-    api.registerTool({
-      name: 'claude_session_stop',
+    registerToolWithAliases({
+      name: 'session_stop',
       description: 'Stop a persistent Claude Code session',
       parameters: {
         type: 'object',
@@ -349,38 +371,38 @@ const plugin = {
         await getManager().stopSession(args.name as string);
         return { ok: true };
       },
-    });
+    }, ['claude_session_stop']);
 
-    // ─── Tool: claude_session_list ───────────────────────────────────────
+    // ─── Tool: session_list ───────────────────────────────────────────────
 
-    api.registerTool({
-      name: 'claude_session_list',
+    registerToolWithAliases({
+      name: 'session_list',
       description: 'List all active Claude Code sessions',
       parameters: { type: 'object', properties: {} },
       execute: async (_id) => {
         if (!manager) return { ok: true, sessions: [], persisted: [] };
         return { ok: true, sessions: manager.listSessions(), persisted: manager.listPersistedSessions() };
       },
-    });
+    }, ['claude_session_list']);
 
-    // ─── Tool: claude_sessions_overview ──────────────────────────────────
+    // ─── Tool: sessions_overview ──────────────────────────────────────────
 
-    api.registerTool({
-      name: 'claude_sessions_overview',
+    registerToolWithAliases({
+      name: 'sessions_overview',
       description:
-        'Get an aggregate overview of all active Claude Code sessions — readiness, busy/paused state, cost, context usage, and last activity for each. Use this for a dashboard view across all sessions. For single-session detail, use claude_session_status instead.',
+        'Get an aggregate overview of all active Claude Code sessions — readiness, busy/paused state, cost, context usage, and last activity for each. Use this for a dashboard view across all sessions. For single-session detail, use session_status instead.',
       parameters: { type: 'object', properties: {} },
       execute: async (_id) => {
         if (!manager)
           return { ok: true, version: 'unknown', sessions: 0, sessionNames: [], uptime: process.uptime(), details: [] };
         return manager.health();
       },
-    });
+    }, ['claude_sessions_overview']);
 
-    // ─── Tool: claude_session_status ─────────────────────────────────────
+    // ─── Tool: session_status ─────────────────────────────────────────────
 
-    api.registerTool({
-      name: 'claude_session_status',
+    registerToolWithAliases({
+      name: 'session_status',
       description: 'Get detailed status of a Claude Code session (context %, tokens, cost, uptime)',
       parameters: {
         type: 'object',
@@ -391,12 +413,12 @@ const plugin = {
         const status = getManager().getStatus(args.name as string);
         return { ok: true, ...status };
       },
-    });
+    }, ['claude_session_status']);
 
-    // ─── Tool: claude_session_grep ───────────────────────────────────────
+    // ─── Tool: session_grep ───────────────────────────────────────────────
 
-    api.registerTool({
-      name: 'claude_session_grep',
+    registerToolWithAliases({
+      name: 'session_grep',
       description: 'Search session history for events matching a regex pattern',
       parameters: {
         type: 'object',
@@ -416,12 +438,12 @@ const plugin = {
         );
         return { ok: true, count: matches.length, matches };
       },
-    });
+    }, ['claude_session_grep']);
 
-    // ─── Tool: claude_session_compact ────────────────────────────────────
+    // ─── Tool: session_compact ────────────────────────────────────────────
 
-    api.registerTool({
-      name: 'claude_session_compact',
+    registerToolWithAliases({
+      name: 'session_compact',
       description: 'Compact a session to reclaim context window space',
       parameters: {
         type: 'object',
@@ -435,12 +457,12 @@ const plugin = {
         await getManager().compactSession(args.name as string, args.summary as string | undefined);
         return { ok: true };
       },
-    });
+    }, ['claude_session_compact']);
 
-    // ─── Tool: claude_agents_list ────────────────────────────────────────
+    // ─── Tool: agents_list ────────────────────────────────────────────────
 
-    api.registerTool({
-      name: 'claude_agents_list',
+    registerToolWithAliases({
+      name: 'agents_list',
       description: 'List agent definitions from .claude/agents/',
       parameters: {
         type: 'object',
@@ -450,12 +472,12 @@ const plugin = {
         const agents = getManager().listAgents(sanitizeCwd(args.cwd as string | undefined));
         return { ok: true, agents };
       },
-    });
+    }, ['claude_agents_list']);
 
-    // ─── Tool: claude_team_list ──────────────────────────────────────────
+    // ─── Tool: team_list ──────────────────────────────────────────────────
 
-    api.registerTool({
-      name: 'claude_team_list',
+    registerToolWithAliases({
+      name: 'team_list',
       description: 'List teammates in an agent team session (requires enableAgentTeams)',
       parameters: {
         type: 'object',
@@ -466,12 +488,12 @@ const plugin = {
         const response = await getManager().teamList(args.name as string);
         return { ok: true, response };
       },
-    });
+    }, ['claude_team_list']);
 
-    // ─── Tool: claude_team_send ──────────────────────────────────────────
+    // ─── Tool: team_send ──────────────────────────────────────────────────
 
-    api.registerTool({
-      name: 'claude_team_send',
+    registerToolWithAliases({
+      name: 'team_send',
       description: 'Send a message to a specific teammate in an agent team session',
       parameters: {
         type: 'object',
@@ -490,12 +512,12 @@ const plugin = {
         );
         return { ok: true, ...result };
       },
-    });
+    }, ['claude_team_send']);
 
-    // ─── Tool: claude_session_update_tools ───────────────────────────────
+    // ─── Tool: session_update_tools ───────────────────────────────────────
 
-    api.registerTool({
-      name: 'claude_session_update_tools',
+    registerToolWithAliases({
+      name: 'session_update_tools',
       description:
         'Update allowedTools or disallowedTools for a running session. Restarts the session process with --resume to apply the new tool constraints while preserving conversation history. Rejects if the session is currently busy.',
       parameters: {
@@ -530,12 +552,12 @@ const plugin = {
         });
         return { ok: true, restarted: true, ...info };
       },
-    });
+    }, ['claude_session_update_tools']);
 
-    // ─── Tool: claude_session_switch_model ───────────────────────────────
+    // ─── Tool: session_switch_model ───────────────────────────────────────
 
-    api.registerTool({
-      name: 'claude_session_switch_model',
+    registerToolWithAliases({
+      name: 'session_switch_model',
       description:
         'Switch the model for a running session immediately. Restarts the session process with --resume so the new model takes effect on the next message while preserving conversation history.',
       parameters: {
@@ -550,12 +572,12 @@ const plugin = {
         const info = await getManager().switchModel(args.name as string, args.model as string);
         return { ok: true, restarted: true, ...info };
       },
-    });
+    }, ['claude_session_switch_model']);
 
-    // ─── Tool: claude_project_purge (CLI 2.1.126) ──────────────────────
+    // ─── Tool: project_purge (CLI 2.1.126) ────────────────────────────────
 
-    api.registerTool({
-      name: 'claude_project_purge',
+    registerToolWithAliases({
+      name: 'project_purge',
       description:
         'Delete Claude Code project state (transcripts, tasks, file history, config entry) via `claude project purge`. Defaults to dry-run for safety — pass dry_run=false to actually delete. Use all=true to purge every project.',
       parameters: {
@@ -584,7 +606,7 @@ const plugin = {
         });
         return { ok: true, ...result };
       },
-    });
+    }, ['claude_project_purge']);
 
     // ─── Tool: codex_resume (Codex 0.119+) ──────────────────────────────
 
@@ -928,10 +950,10 @@ const plugin = {
       },
     });
 
-    // ─── Tool: claude_session_send_to ─────────────────────────────────
+    // ─── Tool: session_send_to ────────────────────────────────────────────
 
-    api.registerTool({
-      name: 'claude_session_send_to',
+    registerToolWithAliases({
+      name: 'session_send_to',
       description:
         'Send a cross-session message from one session to another. If the target is idle, the message is delivered immediately. If busy, it is queued in the inbox for later delivery. Use "*" as target to broadcast to all other sessions.',
       parameters: {
@@ -953,12 +975,12 @@ const plugin = {
         );
         return { ok: true, ...result };
       },
-    });
+    }, ['claude_session_send_to']);
 
-    // ─── Tool: claude_session_inbox ──────────────────────────────────
+    // ─── Tool: session_inbox ──────────────────────────────────────────────
 
-    api.registerTool({
-      name: 'claude_session_inbox',
+    registerToolWithAliases({
+      name: 'session_inbox',
       description: 'Read inbox messages for a session. Returns unread messages by default.',
       parameters: {
         type: 'object',
@@ -975,12 +997,12 @@ const plugin = {
         );
         return { ok: true, count: messages.length, messages };
       },
-    });
+    }, ['claude_session_inbox']);
 
-    // ─── Tool: claude_session_deliver_inbox ──────────────────────────
+    // ─── Tool: session_deliver_inbox ──────────────────────────────────────
 
-    api.registerTool({
-      name: 'claude_session_deliver_inbox',
+    registerToolWithAliases({
+      name: 'session_deliver_inbox',
       description:
         'Deliver all queued inbox messages to an idle session. Call this when a session finishes a task to process waiting messages.',
       parameters: {
@@ -992,7 +1014,7 @@ const plugin = {
         const count = await getManager().sessionDeliverInbox(args.name as string);
         return { ok: true, delivered: count };
       },
-    });
+    }, ['claude_session_deliver_inbox']);
 
     // ─── Tool: ultraplan_start ──────────────────────────────────────
 

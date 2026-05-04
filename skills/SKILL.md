@@ -43,7 +43,7 @@ metadata:
 
 # Claw Orchestrator Skill
 
-Claw Orchestrator — persistent multi-engine coding session manager. Wraps Claude Code, Codex, Gemini, and Cursor Agent CLIs (plus any custom CLI) into headless agentic engines with 33 tools.
+Claw Orchestrator — persistent multi-engine coding session manager. Wraps Claude Code, Codex, Gemini, and Cursor Agent CLIs (plus any custom CLI) into headless agentic engines with 35 tools.
 
 ## Engine Quick Reference
 

@@ -75,7 +75,7 @@ await manager.councilStart("Design and implement an auth system", {
 
 ### Tool Orchestration
 
-Expose coding sessions as tools so other agents and systems can control them. The runtime registers 33 tools, including:
+Expose coding sessions as tools so other agents and systems can control them. The runtime registers 35 tools, including:
 
 ```txt
 session_start         session_send         session_status
