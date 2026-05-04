@@ -9,7 +9,7 @@ import { SessionManager } from './src/session-manager.js';
 const manager = new SessionManager({ claudeBin: 'claude' });
 
 async function test() {
-  console.log('=== openclaw-claude-code v2.0 Integration Test ===\n');
+  console.log('=== Claw Orchestrator Integration Test ===\n');
 
   // 1. File operations (no session needed)
   console.log('--- Test: agents-list ---');

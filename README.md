@@ -1,271 +1,218 @@
 <p align="center">
-  <img src="assets/banner.jpg" alt="openclaw-claude-code banner" width="100%">
+  <img src="./assets/banner.jpg" alt="Claw Orchestrator" width="100%">
 </p>
 
-# openclaw-claude-code
+# Claw Orchestrator
 
-Programmable bridge that turns coding CLIs into headless, agentic engines — persistent sessions, multi-engine orchestration, multi-agent council, and dynamic runtime control.
+Run Claude Code, Codex and other coding agents in one unified runtime.
 
-[![npm version](https://img.shields.io/npm/v/@enderfga/openclaw-claude-code.svg)](https://www.npmjs.com/package/@enderfga/openclaw-claude-code)
-[![CI](https://github.com/Enderfga/openclaw-claude-code/actions/workflows/ci.yml/badge.svg)](https://github.com/Enderfga/openclaw-claude-code/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-300%20passed-brightgreen)](https://github.com/Enderfga/openclaw-claude-code/actions/workflows/ci.yml)
+Claw Orchestrator turns interactive coding CLIs into programmable, headless agent engines. Start persistent sessions, route tasks across different coding agents, coordinate multi-agent councils, and expose everything through a clean tool-based API.
+
+> Claude Code, Codex, Gemini, Cursor Agent, or your own custom CLI — orchestrated as one runtime.
+>
+> **Runs standalone, with first-class OpenClaw plugin support and a path to other claw-style agent platforms.**
+
+[![npm version](https://img.shields.io/npm/v/@enderfga/claw-orchestrator.svg)](https://www.npmjs.com/package/@enderfga/claw-orchestrator)
+[![CI](https://github.com/Enderfga/claw-orchestrator/actions/workflows/ci.yml/badge.svg)](https://github.com/Enderfga/claw-orchestrator/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-## Why This Exists
+---
 
-Claude Code and Codex are powerful coding CLIs, but they're designed for interactive use. If you want AI agents to **programmatically** drive coding sessions — start them, send tasks, manage context, coordinate teams, switch models mid-conversation — you need a control layer.
+## Why Claw Orchestrator?
 
-This project wraps coding CLIs and exposes their capabilities as a clean, tool-based API. Your agents get persistent sessions, real-time streaming, multi-model routing, multi-engine support, and multi-agent council orchestration.
+Coding agents are powerful, but most are still designed as interactive CLIs.
 
-> **Why not just use the Claude API directly?** The API gives you completions. This gives you a fully managed coding agent — file editing, tool use, git awareness, context management, and multi-turn conversations — all without building the orchestration yourself.
+That works well when a human is sitting in front of a terminal. It breaks down when you want agents to:
 
-## Quick Start
+- keep long-running coding sessions alive
+- switch between Claude Code, Codex, Gemini, Cursor Agent, or custom CLIs
+- collaborate as a team on the same codebase
+- integrate coding capabilities into OpenClaw first, and other claw-style agent systems over time
+- manage context, tools, worktrees, and execution state programmatically
 
-**One-line install** (recommended):
+Claw Orchestrator is the control layer for that.
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/Enderfga/openclaw-claude-code/main/install.sh | bash
-```
+---
 
-This installs via npm, registers the plugin in `openclaw.json`, and restarts the gateway automatically.
+## Core Features
 
-**Standalone** (no OpenClaw):
+### Persistent Sessions
 
-```bash
-npm install -g @enderfga/openclaw-claude-code
-claude-code-skill serve
-```
+Keep coding agents alive across requests.
 
-```typescript
-import { SessionManager } from '@enderfga/openclaw-claude-code';
-
-const manager = new SessionManager();
-await manager.startSession({ name: 'task', cwd: '/project' });
-const result = await manager.sendMessage('task', 'Fix the failing tests');
-```
-
-See [Getting Started](./skills/references/getting-started.md) for full setup guide.
-
-## Features
-
-### Multi-Engine Sessions
-
-Drive Claude Code, OpenAI Codex, Google Gemini, Cursor Agent, or **any custom coding CLI** through a unified `ISession` interface. Each engine manages its own subprocess, events, and cost tracking.
-
-```typescript
-// Claude Code engine (default)
-await manager.startSession({ name: 'claude-task', engine: 'claude', model: 'opus' });
-
-// Codex engine
-await manager.startSession({ name: 'codex-task', engine: 'codex', model: 'gpt-5.4' });
-
-// Gemini engine
-await manager.startSession({ name: 'gemini-task', engine: 'gemini', model: 'gemini-3.1-pro-preview' });
-
-// Cursor Agent engine
-await manager.startSession({ name: 'cursor-task', engine: 'cursor', model: 'sonnet-4' });
-
-// Custom engine — any coding agent CLI via config
-await manager.startSession({
-  name: 'my-task',
-  engine: 'custom',
-  cwd: '/project',
-  customEngine: {
-    name: 'my-agent',
-    bin: 'my-agent',
-    persistent: true,  // or false for one-shot
-    args: { print: '-p', outputFormat: '--output-format', outputFormatValue: 'stream-json', /* ... */ },
-  },
+```ts
+const session = await manager.startSession({
+  name: "fix-tests",
+  engine: "claude",
+  cwd: "/path/to/project",
 });
+
+await manager.sendMessage("fix-tests", "Fix the failing tests");
 ```
 
-See [Multi-Engine](./skills/references/multi-engine.md) for architecture and adding new engines.
+### Multi-Engine Runtime
+
+Drive different coding agents through one unified interface.
+
+```ts
+await manager.startSession({ name: "claude-task", engine: "claude" });
+await manager.startSession({ name: "codex-task",  engine: "codex"  });
+await manager.startSession({ name: "gemini-task", engine: "gemini" });
+await manager.startSession({ name: "cursor-task", engine: "cursor" });
+```
 
 ### Multi-Agent Council
 
-Multiple agents collaborate in parallel on the same codebase with git worktree isolation, consensus voting, and a two-phase protocol (plan then execute).
+Run multiple agents in parallel with isolated git worktrees, independent reasoning, and review-based collaboration.
 
-```typescript
-const session = manager.councilStart('Build a REST API with auth', {
+```ts
+await manager.councilStart("Design and implement an auth system", {
   agents: [
-    { name: 'Planner', emoji: '🟠', persona: 'Requirements & architecture', engine: 'claude', model: 'opus' },
-    { name: 'Generator', emoji: '🟢', persona: 'Implementation per plan', engine: 'codex', model: 'gpt-5.4' },
-    { name: 'Evaluator', emoji: '🔵', persona: 'Independent verification', engine: 'claude', model: 'sonnet' },
+    { name: "Planner",  engine: "claude" },
+    { name: "Builder",  engine: "codex"  },
+    { name: "Reviewer", engine: "claude" },
   ],
-  maxRounds: 10,
-  projectDir: '/tmp/api-project',
 });
 ```
 
-See [Council](./skills/references/council.md) for the full collaboration protocol.
+### Tool Orchestration
 
-### 27 Tools
+Expose coding sessions as tools so other agents and systems can control them. The runtime registers 35 tools, including:
 
-| Category | Tools |
-|----------|-------|
-| Session Lifecycle | `claude_session_start`, `send`, `stop`, `list`, `overview` |
-| Session Operations | `status`, `grep`, `compact`, `update_tools`, `switch_model` |
-| Inbox | `session_send_to`, `session_inbox`, `session_deliver_inbox` |
-| Agent Teams | `agents_list`, `team_list`, `team_send` |
-| Council | `council_start`, `council_status`, `council_abort`, `council_inject`, `council_review`, `council_accept`, `council_reject` |
-| Ultraplan | `ultraplan_start`, `ultraplan_status` |
-| Ultrareview | `ultrareview_start`, `ultrareview_status` |
-
-See [Tools Reference](./skills/references/tools.md) for complete API.
-
-### Session Inbox
-
-Cross-session messaging: sessions can send messages to each other. Idle sessions receive immediately; busy sessions queue for later delivery.
-
-```typescript
-await manager.sessionSendTo('planner', 'coder', 'The auth module needs rate limiting');
-await manager.sessionSendTo('monitor', '*', 'Build failed!');  // broadcast
+```txt
+session_start         session_send         session_status
+session_grep          session_compact      session_inbox
+team_send             team_list            agents_list
+council_start         council_review       council_accept
+ultraplan_start       ultrareview_start
 ```
 
-### Ultraplan
+(For backward compatibility with v2.x callers, the legacy `claude_session_*` aliases remain registered through v3.0.x and will be removed in v3.1.)
 
-Dedicated Opus planning session that explores your project for up to 30 minutes and produces a detailed implementation plan.
+---
 
-```typescript
-const plan = manager.ultraplanStart('Add OAuth2 support with Google and GitHub providers', {
-  cwd: '/project',
-});
-// Poll: manager.ultraplanStatus(plan.id)
-```
+## Quick Start
 
-### Ultrareview
-
-Fleet of 5-20 bug-hunting agents that review your codebase in parallel, each from a different angle (security, performance, logic, types, etc.).
-
-```typescript
-const review = manager.ultrareviewStart('/project', {
-  agentCount: 10,
-  maxDurationMinutes: 15,
-});
-// Poll: manager.ultrareviewStatus(review.id)
-```
-
-### OpenAI-Compatible API
-
-Drop-in backend for any OpenAI-compatible webchat frontend. Stateful sessions maximize Anthropic prompt caching (90% discount on cached tokens).
+### Standalone (no OpenClaw)
 
 ```bash
-# Start the server
-claude-code-skill serve
-
-# Use with any OpenAI client
-curl http://127.0.0.1:18796/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{"model":"claude-sonnet-4-6","messages":[{"role":"user","content":"Hello!"}],"stream":true}'
+npm install -g @enderfga/claw-orchestrator
+clawo serve
 ```
 
-Works with ChatGPT-Next-Web, Open WebUI, LobeChat, and any app that speaks the OpenAI API format. Set the API base URL to `http://127.0.0.1:18796/v1` and use any API key (or leave blank).
-
-See [CLI Reference](./skills/references/cli.md) for configuration options.
-
-### And More
-
-- **Session Persistence** — 7-day disk TTL, auto-resume across restarts
-- **Multi-Model Proxy** — Anthropic ↔ OpenAI format translation for Gemini/GPT
-- **Cost Tracking** — per-model pricing with real-time token accounting
-- **Effort Control** — `low` to `max` thinking depth per message
-- **Runtime Model/Tool Switching** — hot-swap via `--resume`
-
-## Architecture
-
-```mermaid
-graph TD
-    A[OpenClaw / Your Code] -->|tool calls| B[Plugin Entry<br/>index.ts]
-    B --> C[SessionManager]
-    C --> D[Claude Engine<br/>persistent-session.ts]
-    C --> E[Codex Engine<br/>persistent-codex-session.ts]
-    C --> K[Gemini Engine<br/>persistent-gemini-session.ts]
-    C --> L[Cursor Engine<br/>persistent-cursor-session.ts]
-    C --> M[Custom Engine<br/>persistent-custom-session.ts]
-    C --> F[Council<br/>council.ts]
-    C --> G[Inbox / Ultraplan / Ultrareview]
-    F -->|git worktree per agent| D
-    B --> H[Proxy Handler]
-    H -->|Anthropic format| I[Gemini / GPT / Gateway]
-    B --> J[Embedded HTTP Server]
+```bash
+clawo session start --engine claude --name fix-tests --cwd .
+clawo session send fix-tests "Fix the failing tests"
 ```
 
-```
-src/
-├── index.ts                    # Plugin entry — 27 tools + proxy route
-├── models.ts                   # Centralized model registry (pricing, aliases, engines)
-├── types.ts                    # Shared types, ISession interface, re-exports from models
-├── constants.ts                # Shared constants (timeouts, limits, thresholds)
-├── logger.ts                   # Structured Logger interface + console implementation
-├── base-oneshot-session.ts     # Abstract base class for one-shot engines (Codex/Gemini/Cursor)
-├── persistent-session.ts       # Claude Code engine (ISession)
-├── persistent-codex-session.ts # Codex engine (extends BaseOneShotSession)
-├── persistent-gemini-session.ts # Gemini engine (extends BaseOneShotSession)
-├── persistent-cursor-session.ts # Cursor Agent engine (extends BaseOneShotSession)
-├── persistent-custom-session.ts # Custom engine — any CLI via config (ISession)
-├── session-manager.ts          # Multi-session orchestration + council management
-├── circuit-breaker.ts          # Engine failure tracking with exponential backoff
-├── inbox-manager.ts            # Cross-session messaging (inbox)
-├── council.ts                  # Multi-agent council orchestration
-├── consensus.ts                # Consensus vote parsing
-├── openai-compat.ts            # OpenAI-compatible /v1/chat/completions
-├── embedded-server.ts          # HTTP server for standalone mode
-└── proxy/
-    ├── handler.ts              # Provider detection + routing
-    ├── anthropic-adapter.ts    # Anthropic ↔ OpenAI conversion
-    ├── schema-cleaner.ts       # Gemini schema compatibility
-    └── thought-cache.ts        # Gemini thought caching
+### Programmatic
 
-skills/
-├── SKILL.md                    # OpenClaw skill definition (triggers + metadata)
-└── references/                 # All documentation (progressive disclosure)
-    ├── getting-started.md      # Installation, configuration, first session
-    ├── sessions.md             # Persistent sessions, resume, cost tracking
-    ├── multi-engine.md         # Claude + Codex + Gemini + Cursor + Custom engines
-    ├── council.md              # Multi-agent collaboration protocol
-    ├── tools.md                # Complete 27-tool API reference
-    ├── inbox.md                # Cross-session messaging
-    ├── ultra.md                # Ultraplan & Ultrareview
-    └── cli.md                  # Command-line interface
+```ts
+import { SessionManager } from "@enderfga/claw-orchestrator";
+
+const manager = new SessionManager();
+await manager.startSession({ name: "task", cwd: "/project" });
+const result = await manager.sendMessage("task", "Fix the failing tests");
 ```
 
-## Documentation
+### Run a multi-agent council
 
-All documentation lives in [`skills/references/`](./skills/references/) — see the directory tree above. Start with [Getting Started](./skills/references/getting-started.md), or jump to the [Tools Reference](./skills/references/tools.md) for the full 27-tool API.
+```bash
+clawo council start "Refactor the API layer and add tests"
+```
 
-For contributing: see [CONTRIBUTING.md](./CONTRIBUTING.md).
+### As an OpenClaw plugin
+
+If you run OpenClaw, Claw Orchestrator installs as a managed plugin. The same tools (`session_start`, `team_send`, `council_start`, ...) become available to every OpenClaw agent.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Enderfga/claw-orchestrator/main/install.sh | bash
+```
+
+This installs via npm, registers the plugin in `~/.openclaw/openclaw.json`, and restarts the gateway. See [`skills/references/getting-started.md`](./skills/references/getting-started.md) for the full setup, including upgrading from `openclaw-claude-code` v2.x.
+
+---
 
 ## Engine Compatibility
 
-All engines are tested and verified in each release:
+| Engine | CLI | Tested Version | Status |
+|--------|-----|----------------|--------|
+| Claude Code   | `claude` | 2.1.126     | Supported |
+| Codex         | `codex`  | 0.128.0     | Supported |
+| Gemini        | `gemini` | 0.36.0      | Supported |
+| Cursor Agent  | `agent`  | 2026.03.30  | Supported |
+| Custom CLI    | any      | —           | Supported |
 
-| Engine | CLI | Tested Version | Invocation | Status |
-|--------|-----|---------------|------------|--------|
-| Claude Code | `claude` | 2.1.121 | Persistent subprocess, stream-json | **Fully supported** |
-| OpenAI Codex | `codex` | 0.128.0 | `codex exec --sandbox workspace-write --json`, per-message; or `codex app-server` (long-running, for `/goal`) | **Fully supported** |
-| Google Gemini | `gemini` | 0.36.0 | `gemini -p --output-format stream-json`, per-message | **Fully supported** |
-| Cursor Agent | `agent` | 2026.03.30 | `agent -p --force --output-format stream-json`, per-message | **Fully supported** |
-| Custom | User-configured | Any | User-defined via `CustomEngineConfig` | **Fully supported** |
+Any coding CLI that can run as a subprocess can be integrated as a custom engine.
 
-> **Note:** CLI versions evolve independently. If a new CLI version changes its flags or output format, the plugin may need an update. Pin your CLI versions in CI to avoid surprises.
+---
 
-### Known Limitations
+## Architecture
 
-- **Team tools** (`team_list`, `team_send`) work on all engines via cross-session inbox routing as a virtual team layer. Claude Code's native experimental Agent Teams is an in-process TUI mechanism and is not reachable from a subprocess wrapper
-- **Codex/Gemini/Cursor sessions** are one-shot per message (no persistent subprocess) — context is carried via working directory, not conversation history
-- **Custom engine** event parsing assumes stream-json NDJSON format compatible with Claude Code / Gemini / Cursor CLI output; CLIs with proprietary output formats may need a built-in engine instead
-- **Council consensus** requires agents to output an explicit `[CONSENSUS: YES/NO]` tag — loose phrasing will default to NO
-- **Inbox delivered messages** are not retained in inbox history (only queued messages appear)
+```txt
+                 ┌─────────────────────┐
+                 │  Claw Orchestrator  │
+                 └──────────┬──────────┘
+                            │
+        ┌───────────────────┼───────────────────┐
+        │                   │                   │
+ ┌──────▼──────┐     ┌──────▼──────┐     ┌──────▼──────┐
+ │ Claude Code │     │    Codex    │     │ Custom CLI  │
+ └──────┬──────┘     └──────┬──────┘     └──────┬──────┘
+        │                   │                   │
+        └───────────┬───────┴───────────┬───────┘
+                    │                   │
+             Persistent Sessions   Tool API
+                    │                   │
+                    └──── Multi-Agent Council
+```
 
-## Requirements
+For source-level architecture, see [`CLAUDE.md`](./CLAUDE.md). For deeper reference docs, see [`skills/references/`](./skills/references/).
 
-- **Node.js >= 22**
-- **Claude Code CLI >= 2.1** — `npm install -g @anthropic-ai/claude-code`
-- **OpenClaw >= 2026.3.0** (optional, for plugin mode)
-- **Codex CLI >= 0.112** (optional) — `npm install -g @openai/codex`
-- **Gemini CLI >= 0.35** (optional) — `npm install -g @google/gemini-cli`
-- **Cursor Agent CLI** (optional) — Install via Cursor IDE or `curl https://cursor.com/install -fsSL | bash`
+---
+
+## Migrating from `@enderfga/openclaw-claude-code` (v2.x)
+
+v3.0 renames the package, the CLI binary, and the tool API.
+
+| What | v2.x | v3.0 |
+|---|---|---|
+| npm package | `@enderfga/openclaw-claude-code` | `@enderfga/claw-orchestrator` |
+| CLI binary | `claude-code-skill` | `clawo` (the old name still works in v3.0.x) |
+| Tool names | `claude_session_start`, `claude_session_send`, ... | `session_start`, `session_send`, ... (old names still work in v3.0.x) |
+| OpenClaw plugin id | `openclaw-claude-code` | `claw-orchestrator` |
+
+To upgrade:
+
+```bash
+npm uninstall -g @enderfga/openclaw-claude-code
+npm install -g @enderfga/claw-orchestrator
+# If you use OpenClaw, the install.sh handles the plugin entry migration:
+curl -fsSL https://raw.githubusercontent.com/Enderfga/claw-orchestrator/main/install.sh | bash
+```
+
+The legacy aliases (`claude-code-skill` binary and `claude_*` tool names) remain registered for the duration of v3.0.x. They will be removed in v3.1; update your scripts before upgrading.
+
+---
+
+## Project Status
+
+Active development. Current focus areas:
+
+- stable multi-engine session management
+- richer council workflows
+- custom engine configuration ergonomics
+- runtime control APIs
+- cleaner CLI and OpenClaw integration
+
+---
+
+## Contributing
+
+See [`CONTRIBUTING.md`](./CONTRIBUTING.md). PR prefixes (`feat:`, `fix:`, `docs:`, `chore:`, `test:`) are required. Run `npm run build && npm run lint && npm run format:check && npm run test` before submitting.
+
+---
 
 ## License
 
-MIT
+MIT — see [`LICENSE`](./LICENSE).

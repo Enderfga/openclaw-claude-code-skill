@@ -1,10 +1,10 @@
-# Contributing to openclaw-claude-code
+# Contributing to Claw Orchestrator
 
 ## Dev Environment Setup
 
 ```bash
-git clone https://github.com/Enderfga/openclaw-claude-code.git
-cd openclaw-claude-code
+git clone https://github.com/Enderfga/claw-orchestrator.git
+cd claw-orchestrator
 npm install
 npm run build
 ```

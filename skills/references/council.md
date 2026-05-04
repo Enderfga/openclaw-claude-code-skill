@@ -75,7 +75,7 @@ This starts a 3-agent council (Planner, Generator, Evaluator) with default setti
 ### Via TypeScript
 
 ```typescript
-import { SessionManager } from '@enderfga/openclaw-claude-code';
+import { SessionManager } from '@enderfga/claw-orchestrator';
 
 const manager = new SessionManager();
 

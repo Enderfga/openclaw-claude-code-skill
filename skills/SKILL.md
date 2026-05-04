@@ -1,5 +1,5 @@
 ---
-name: claude-code-skill
+name: claw-orchestrator
 description: Manage persistent coding sessions across Claude Code, Codex, Gemini, and Cursor engines. Use when orchestrating multi-engine coding agents, starting/sending/stopping sessions, running multi-agent council collaborations, cross-session messaging, ultraplan deep planning, ultrareview parallel code review, or switching models/tools at runtime. Triggers on "start a session", "send to session", "run council", "ultraplan", "ultrareview", "switch model", "multi-agent", "coding session", "session inbox", "cursor agent".
 metadata:
   {
@@ -12,7 +12,7 @@ metadata:
             {
               "id": "npm-plugin",
               "kind": "node",
-              "package": "@enderfga/openclaw-claude-code",
+              "package": "@enderfga/claw-orchestrator",
               "label": "Install plugin (npm)"
             },
             {
@@ -41,9 +41,9 @@ metadata:
   }
 ---
 
-# Claude Code Skill
+# Claw Orchestrator Skill
 
-Persistent multi-engine coding session manager. Wraps Claude Code, Codex, Gemini, and Cursor CLIs into headless agentic engines with 27 tools.
+Claw Orchestrator — persistent multi-engine coding session manager for claw-style agent systems. Runs as a standalone CLI/server, with first-class OpenClaw plugin support. Wraps Claude Code, Codex, Gemini, Cursor Agent, and custom CLIs into headless agentic engines with 35 tools.
 
 ## Engine Quick Reference
 

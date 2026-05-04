@@ -1,15 +1,17 @@
-# CLAUDE.md — openclaw-claude-code
+# CLAUDE.md — claw-orchestrator
 
 This file provides context for Claude Code when working on this project.
 
 ## Architecture
 
-OpenClaw plugin that wraps coding CLIs (Claude Code, Codex, Gemini, Cursor) into a
-managed session layer. Key source files:
+Claw Orchestrator wraps coding CLIs (Claude Code, Codex, Gemini, Cursor Agent, plus
+arbitrary custom CLIs) into a managed, programmable session layer for claw-style
+agent systems. Runs as a standalone CLI/server, with first-class OpenClaw plugin
+support. Key source files:
 
 | File | Purpose |
 |------|---------|
-| `src/index.ts` | Plugin entry — registers all 27 tools with OpenClaw SDK |
+| `src/index.ts` | Plugin entry — registers all 35 tools (plus 17 v2.x deprecated aliases) |
 | `src/session-manager.ts` | Core orchestrator — session lifecycle, council, ultraplan/ultrareview |
 | `src/base-oneshot-session.ts` | Abstract base class for one-shot (process-per-send) engines |
 | `src/persistent-session.ts` | Claude Code CLI wrapper (spawn, JSON protocol, stream parsing) |

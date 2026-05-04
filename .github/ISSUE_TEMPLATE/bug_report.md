@@ -1,6 +1,6 @@
 ---
 name: Bug Report
-about: Report a bug in openclaw-claude-code
+about: Report a bug in Claw Orchestrator
 title: '[Bug] '
 labels: bug
 assignees: ''

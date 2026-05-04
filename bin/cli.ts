@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 /**
- * claude-code-skill CLI — connects to the embedded server (auto-started by plugin)
+ * clawo CLI — connects to the Claw Orchestrator embedded server (auto-started by the plugin)
  *
  * When the plugin is installed, the embedded server starts automatically.
  * This CLI is just an HTTP client — zero configuration needed.
  *
- * For standalone use (no OpenClaw), run: claude-code-skill serve
+ * For standalone use (no OpenClaw), run: clawo serve
+ *
+ * Note: this file is also exposed as `claude-code-skill` for backward
+ * compatibility with v2.x installations. The alias will be removed in v3.1.
  */
 
 import { Command } from 'commander';
@@ -18,7 +21,8 @@ function getBaseUrl(): string {
 function getCliVersion(): string {
   try {
     const _require = createRequire(import.meta.url);
-    const pkg = _require('../package.json') as { version?: string };
+    // From dist/bin/cli.js, package.json sits two levels up (dist/bin/ → dist/ → root).
+    const pkg = _require('../../package.json') as { version?: string };
     return pkg.version || '0.0.0';
   } catch {
     return '0.0.0';
@@ -45,7 +49,10 @@ async function api(path: string, method = 'GET', body?: unknown): Promise<Record
 // ─── CLI ─────────────────────────────────────────────────────────────────────
 
 const program = new Command();
-program.name('claude-code-skill').description('Claude Code SDK CLI').version(getCliVersion());
+// Use argv[1] basename so the help text reflects which alias the user invoked
+// (clawo vs. claude-code-skill). Both binaries point at this same file.
+const invokedAs = (process.argv[1] || '').split('/').pop() || 'clawo';
+program.name(invokedAs).description('Claw Orchestrator CLI').version(getCliVersion());
 
 // Serve (standalone mode — no OpenClaw needed)
 program

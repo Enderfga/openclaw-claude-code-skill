@@ -1,11 +1,12 @@
 {
-  "name": "@enderfga/openclaw-claude-code",
-  "version": "2.15.0",
-  "description": "OpenClaw plugin — full Claude Code SDK with session management, agent teams, multi-model proxy, and plan mode",
+  "name": "@enderfga/claw-orchestrator",
+  "version": "3.0.0",
+  "description": "Claw Orchestrator — run Claude Code, Codex, Gemini, Cursor Agent and custom coding CLIs as one unified runtime for claw-style agent systems. Runs standalone, with first-class OpenClaw plugin support. Persistent sessions, multi-agent council, tool orchestration.",
   "type": "module",
   "main": "./dist/src/index.js",
   "types": "./dist/src/index.d.ts",
   "bin": {
+    "clawo": "./dist/bin/cli.js",
     "claude-code-skill": "./dist/bin/cli.js"
   },
   "openclaw": {
@@ -20,7 +21,8 @@
     "skills/",
     "openclaw.plugin.json",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "assets/banner.jpg"
   ],
   "scripts": {
     "build": "tsc",
@@ -38,24 +40,27 @@
     "node": ">=22.0.0"
   },
   "keywords": [
-    "openclaw",
-    "plugin",
-    "claude-code",
-    "claude",
-    "ai-agent",
+    "claw-orchestrator",
     "coding-agent",
-    "agent-teams",
+    "agent-orchestration",
+    "claude-code",
+    "codex",
+    "gemini",
+    "cursor",
+    "multi-agent",
+    "agent-council",
     "session-management",
+    "openclaw",
     "mcp"
   ],
   "author": "enderfga",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Enderfga/openclaw-claude-code.git"
+    "url": "git+https://github.com/Enderfga/claw-orchestrator.git"
   },
-  "homepage": "https://github.com/Enderfga/openclaw-claude-code#readme",
+  "homepage": "https://github.com/Enderfga/claw-orchestrator#readme",
   "bugs": {
-    "url": "https://github.com/Enderfga/openclaw-claude-code/issues"
+    "url": "https://github.com/Enderfga/claw-orchestrator/issues"
   },
   "license": "MIT",
   "dependencies": {

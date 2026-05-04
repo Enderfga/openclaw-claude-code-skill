@@ -1,6 +1,6 @@
 # Claude Code CLI Feature Tracking
 
-This document tracks which Claude Code CLI version the openclaw-claude-code plugin is currently synced to, and which features have been integrated.
+This document tracks which Claude Code CLI version Claw Orchestrator is currently synced to, and which features have been integrated.
 
 ## Currently tracked: **Claude Code CLI 2.1.126** (as of 2026-05-04, plugin v2.14.2)
 

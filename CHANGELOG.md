@@ -5,6 +5,76 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0] - 2026-05-04
+
+### Brand Rebrand
+
+Project repositioned as **Claw Orchestrator** — a multi-engine coding-agent runtime for claw-style agent systems. Runs standalone, with first-class OpenClaw plugin support and a path to other claw-style agent platforms.
+
+- npm package renamed: `@enderfga/openclaw-claude-code` → `@enderfga/claw-orchestrator`. The old package has been deprecated on npm with a moved-to message; existing installs keep working.
+- GitHub repository renamed: `Enderfga/openclaw-claude-code` → `Enderfga/claw-orchestrator`. GitHub auto-redirects existing URLs and clones; `install.sh` raw URL is now `https://raw.githubusercontent.com/Enderfga/claw-orchestrator/main/install.sh`.
+- OpenClaw plugin id renamed: `openclaw-claude-code` → `claw-orchestrator`. The new `install.sh` strips legacy v2.x entries from `~/.openclaw/openclaw.json` automatically on upgrade and warns if the legacy global package is still installed.
+- CLI binary renamed: `claude-code-skill` → `clawo`. The old binary remains installed as an alias for the v3.0.x line and will be removed in v3.1.
+- Skill name renamed: `claude-code-skill` → `claw-orchestrator`. The `skills/claude-code-skill/` directory is preserved as a back-compat symlink for the v3.0.x line.
+- Banner updated; the v2.x banner is preserved at `assets/banner-legacy.jpg`.
+- Log prefixes updated from `[openclaw-claude-code]` to `[claw-orchestrator]`.
+
+### Breaking — Tool API rename (with deprecation aliases)
+
+The 17 `claude_*`-prefixed tools were renamed to engine-neutral names. The old names remain registered as deprecated aliases for the v3.0.x line and will be removed in v3.1. The `codex_*`, `council_*`, `ultraplan_*`, `ultrareview_*` tool names are unchanged.
+
+| Old name (alias, deprecated) | New name (canonical) |
+|---|---|
+| `claude_session_start` | `session_start` |
+| `claude_session_send` | `session_send` |
+| `claude_session_stop` | `session_stop` |
+| `claude_session_list` | `session_list` |
+| `claude_sessions_overview` | `sessions_overview` |
+| `claude_session_status` | `session_status` |
+| `claude_session_grep` | `session_grep` |
+| `claude_session_compact` | `session_compact` |
+| `claude_agents_list` | `agents_list` |
+| `claude_team_list` | `team_list` |
+| `claude_team_send` | `team_send` |
+| `claude_session_update_tools` | `session_update_tools` |
+| `claude_session_switch_model` | `session_switch_model` |
+| `claude_project_purge` | `project_purge` |
+| `claude_session_send_to` | `session_send_to` |
+| `claude_session_inbox` | `session_inbox` |
+| `claude_session_deliver_inbox` | `session_deliver_inbox` |
+
+Calling a deprecated name still works; the tool description in OpenClaw's tool listing is prefixed with `[DEPRECATED — use <new-name>; this alias is removed in v3.1]` to nudge migration.
+
+The plugin manifest (`openclaw.plugin.json`) `contracts.tools` now lists 35 canonical tools plus 17 deprecated aliases (52 entries total) so both old and new names remain discoverable.
+
+### Fixed
+
+- **CLI version reporting** — `clawo --version` (and the legacy `claude-code-skill --version`) now correctly reads the package version. Previously resolved `../package.json` relative to `dist/bin/cli.js`, which silently fell back to `0.0.0`.
+
+### Migration Guide
+
+```bash
+# 1. Uninstall the old package
+npm uninstall -g @enderfga/openclaw-claude-code
+
+# 2. Install the new package
+npm install -g @enderfga/claw-orchestrator
+
+# 3. (If you use OpenClaw) re-run install.sh to migrate the plugin entry
+curl -fsSL https://raw.githubusercontent.com/Enderfga/claw-orchestrator/main/install.sh | bash
+```
+
+Update any scripts that invoke the CLI by name from `claude-code-skill` to `clawo`. Tool callers in agents/MCP clients can continue using `claude_*` names through v3.0.x but should plan to migrate to the engine-neutral names before upgrading to v3.1.
+
+### Unchanged
+
+- `OPENCLAW_*` environment variables (`OPENCLAW_LOG_LEVEL`, `OPENCLAW_SERVE_MAX_SESSIONS`, `OPENCLAW_SERVE_TTL_MINUTES`, `OPENCLAW_RATE_LIMIT`, `OPENCLAW_CORS_ORIGINS`, `OPENCLAW_SERVER_TOKEN`)
+- TypeScript public exports (`SessionManager`, `Council`, `PersistentClaudeSession`, etc.)
+- `peerDependencies.openclaw` requirement
+- Engine compatibility (Claude Code 2.1.126, Codex 0.128.0, Gemini 0.36.0, Cursor Agent 2026.03.30)
+
+---
+
 ## [2.15.0] - 2026-05-04
 
 ### Added — Codex CLI 0.128.0 alignment + `/goal` support

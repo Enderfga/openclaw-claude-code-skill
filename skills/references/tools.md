@@ -1,10 +1,12 @@
 # Tools Reference
 
-All tools are registered as OpenClaw plugin tools. In standalone mode, they're accessible via the embedded HTTP server.
+All tools are registered as Claw Orchestrator plugin tools. In standalone mode, they're accessible via the embedded HTTP server.
+
+> **v3.0 rename:** Tools previously prefixed with `claude_` are now engine-neutral. The old names (`session_start`, `session_send`, `session_stop`, `session_list`, `sessions_overview`, `session_status`, `session_grep`, `session_compact`, `agents_list`, `team_list`, `team_send`, `session_update_tools`, `session_switch_model`, `project_purge`, `session_send_to`, `session_inbox`, `session_deliver_inbox`) remain registered as deprecated aliases through the v3.0.x line and will be removed in v3.1. New code should use the canonical names below. The `codex_*`, `council_*`, `ultraplan_*`, `ultrareview_*` tool names are unchanged.
 
 ## Session Lifecycle (5)
 
-### `claude_session_start`
+### `session_start`
 
 Start a persistent coding session with full CLI flag support.
 
@@ -52,7 +54,7 @@ Start a persistent coding session with full CLI flag support.
 | `bedrockServiceTier` | `'default'` \| `'flex'` \| `'priority'` | AWS Bedrock service tier (sets `ANTHROPIC_BEDROCK_SERVICE_TIER`); only effective when routing through Bedrock |
 | `effort` | `'low'` \| `'medium'` \| `'high'` \| `'xhigh'` \| `'max'` \| `'auto'` | Reasoning effort level. `xhigh` is Opus 4.7-only (between `high` and `max`); triggers `ultrathink` prefix on user messages, same as `high` and `max`. |
 
-### `claude_session_send`
+### `session_send`
 
 Send a message and get the response.
 
@@ -65,7 +67,7 @@ Send a message and get the response.
 | `timeout` | number | | Timeout in ms (default 300000) |
 | `stream` | boolean | | Collect streaming chunks in result |
 
-### `claude_session_stop`
+### `session_stop`
 
 Graceful shutdown (SIGTERM, then SIGKILL after 3s).
 
@@ -73,11 +75,11 @@ Graceful shutdown (SIGTERM, then SIGKILL after 3s).
 |-----------|------|----------|
 | `name` | string | yes |
 
-### `claude_session_list`
+### `session_list`
 
 List all active and persisted sessions. No parameters.
 
-### `claude_sessions_overview`
+### `sessions_overview`
 
 Dashboard view: all sessions with ready/busy/paused state, cost, context %, last activity. No parameters.
 
@@ -85,7 +87,7 @@ Dashboard view: all sessions with ready/busy/paused state, cost, context %, last
 
 ## Session Operations (5)
 
-### `claude_session_status`
+### `session_status`
 
 Detailed status: tokens, cost, context %, tool calls, uptime.
 
@@ -100,7 +102,7 @@ Detailed status: tokens, cost, context %, tool calls, uptime.
 | `retries` | number | Number of API retries that occurred during this session |
 | `lastRetryError` | string \| undefined | Error message from the most recent retry (if any) |
 
-### `claude_session_grep`
+### `session_grep`
 
 Regex search over session event history.
 
@@ -110,7 +112,7 @@ Regex search over session event history.
 | `pattern` | string | yes | Regex pattern |
 | `limit` | number | | Max results (default 50) |
 
-### `claude_session_compact`
+### `session_compact`
 
 Reclaim context window via `/compact`.
 
@@ -119,7 +121,7 @@ Reclaim context window via `/compact`.
 | `name` | string | yes |
 | `summary` | string | |
 
-### `claude_session_update_tools`
+### `session_update_tools`
 
 Update tool permissions at runtime. Restarts session with `--resume`.
 
@@ -131,7 +133,7 @@ Update tool permissions at runtime. Restarts session with `--resume`.
 | `removeTools` | string[] | Tools to remove from lists |
 | `merge` | boolean | Merge with existing (default: replace) |
 
-### `claude_session_switch_model`
+### `session_switch_model`
 
 Hot-swap model mid-conversation. Restarts with `--resume`.
 
@@ -144,7 +146,7 @@ Hot-swap model mid-conversation. Restarts with `--resume`.
 
 ## Project State (1)
 
-### `claude_project_purge`
+### `project_purge`
 
 Wraps `claude project purge` (CLI 2.1.126+). Deletes Claude Code state for a project — transcripts, tasks, file history, config entry. **Defaults to dry-run for safety**; pass `dry_run=false` to actually delete. The CLI's confirmation prompt is bypassed by default (`--yes`) since the wrapper has no TTY; safety is enforced upstream via the dry-run default.
 
@@ -235,7 +237,7 @@ Returns `{ ok, text, goal }`.
 
 ## Agent Teams (3)
 
-### `claude_agents_list`
+### `agents_list`
 
 List agent definitions from `.claude/agents/` (project + global).
 
@@ -243,7 +245,7 @@ List agent definitions from `.claude/agents/` (project + global).
 |-----------|------|
 | `cwd` | string |
 
-### `claude_team_list`
+### `team_list`
 
 List teammates in an agent team session.
 
@@ -251,7 +253,7 @@ List teammates in an agent team session.
 |-----------|------|----------|
 | `name` | string | yes |
 
-### `claude_team_send`
+### `team_send`
 
 Send message to a specific teammate.
 
@@ -340,7 +342,7 @@ Reject council work and provide feedback. Rewrites `plan.md` with rejection feed
 
 ## Inbox (3)
 
-### `claude_session_send_to`
+### `session_send_to`
 
 Send a cross-session message. Delivered immediately if target is idle, queued if busy.
 
@@ -351,7 +353,7 @@ Send a cross-session message. Delivered immediately if target is idle, queued if
 | `message` | string | yes | Message text |
 | `summary` | string | | Short preview (5-10 words) |
 
-### `claude_session_inbox`
+### `session_inbox`
 
 Read inbox messages for a session.
 
@@ -360,7 +362,7 @@ Read inbox messages for a session.
 | `name` | string | yes | Session name |
 | `unreadOnly` | boolean | | Only unread (default true) |
 
-### `claude_session_deliver_inbox`
+### `session_deliver_inbox`
 
 Deliver all queued inbox messages to an idle session.
 

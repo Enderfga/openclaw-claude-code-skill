@@ -2,35 +2,37 @@
 
 ## Installation
 
-### As OpenClaw Plugin
-
-```bash
-openclaw plugins install @enderfga/openclaw-claude-code --dangerously-force-unsafe-install
-openclaw gateway restart
-```
-
-> **Why `--dangerously-force-unsafe-install`?** This plugin spawns Claude Code / Codex CLI subprocesses via `child_process`, which OpenClaw's security scanner flags by design. The flag is required — there is no way to drive coding CLIs without process spawning.
-
-Agents automatically get access to all session, council, and management tools.
-
 ### Standalone CLI
 
 ```bash
-npm install -g @enderfga/openclaw-claude-code
+npm install -g @enderfga/claw-orchestrator
 
 # Start the embedded server
-claude-code-skill serve
+clawo serve
 
 # Drive sessions from the command line
-claude-code-skill session-start myproject -d ~/project
-claude-code-skill session-send myproject "fix the auth bug"
-claude-code-skill session-stop myproject
+clawo session-start myproject -d ~/project
+clawo session-send myproject "fix the auth bug"
+clawo session-stop myproject
 ```
+
+> **Migrating from v2.x?** The legacy binary `claude-code-skill` is still installed alongside `clawo` for the duration of the v3.0.x line; both invoke the same script. Plan to migrate scripts to `clawo` before upgrading to v3.1.
+
+### As OpenClaw Plugin
+
+```bash
+openclaw plugins install @enderfga/claw-orchestrator --dangerously-force-unsafe-install
+openclaw gateway restart
+```
+
+> **Why `--dangerously-force-unsafe-install`?** Claw Orchestrator spawns Claude Code / Codex / Gemini / Cursor Agent CLI subprocesses via `child_process`, which OpenClaw's security scanner flags by design. The flag is required — there is no way to drive coding CLIs without process spawning.
+
+Agents automatically get access to all session, council, and management tools.
 
 ### TypeScript Library
 
 ```typescript
-import { SessionManager } from '@enderfga/openclaw-claude-code';
+import { SessionManager } from '@enderfga/claw-orchestrator';
 
 const manager = new SessionManager({ defaultModel: 'claude-sonnet-4-6' });
 
@@ -99,7 +101,7 @@ In `~/.openclaw/openclaw.json`:
 {
   "plugins": {
     "entries": {
-      "openclaw-claude-code": {
+      "claw-orchestrator": {
         "enabled": true,
         "config": {
           "claudeBin": "claude",

@@ -1,6 +1,6 @@
 # Multi-Engine
 
-openclaw-claude-code supports multiple coding CLI engines behind a unified `ISession` interface. Each engine manages its own subprocess, event stream, and cost tracking independently.
+Claw Orchestrator supports multiple coding CLI engines behind a unified `ISession` interface. Each engine manages its own subprocess, event stream, and cost tracking independently.
 
 ## Architecture
 
