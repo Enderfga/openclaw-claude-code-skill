@@ -31,5 +31,6 @@ coverage/
 .claude/worktrees/
 .worktrees/
 
-# Superpowers process artifacts (plans/specs are local scratch, not shipped docs)
-docs/superpowers/
+# All documentation lives under skills/. The repo is consumed by AI agents
+# that look there; docs/ is for local process scratch only and never shipped.
+docs/
