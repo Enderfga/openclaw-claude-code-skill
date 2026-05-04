@@ -212,6 +212,13 @@ const plugin = {
             description:
               'OpenTelemetry: log raw API request/response bodies (debug only, sets OTEL_LOG_RAW_API_BODIES=1)',
           },
+          // CLI 2.1.122 features
+          bedrockServiceTier: {
+            type: 'string',
+            enum: ['default', 'flex', 'priority'],
+            description:
+              'AWS Bedrock service tier (sets ANTHROPIC_BEDROCK_SERVICE_TIER). Only effective when routing through Bedrock.',
+          },
           customEngine: {
             type: 'object',
             description:
@@ -541,6 +548,40 @@ const plugin = {
       execute: async (_id, args) => {
         const info = await getManager().switchModel(args.name as string, args.model as string);
         return { ok: true, restarted: true, ...info };
+      },
+    });
+
+    // ─── Tool: claude_project_purge (CLI 2.1.126) ──────────────────────
+
+    api.registerTool({
+      name: 'claude_project_purge',
+      description:
+        'Delete Claude Code project state (transcripts, tasks, file history, config entry) via `claude project purge`. Defaults to dry-run for safety — pass dry_run=false to actually delete. Use all=true to purge every project.',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: {
+            type: 'string',
+            description:
+              'Project path to purge (resolved to absolute). Ignored when all=true. Defaults to current cwd.',
+          },
+          all: {
+            type: 'boolean',
+            description: 'Purge state for every project. Mutually exclusive with path.',
+          },
+          dry_run: {
+            type: 'boolean',
+            description: 'List what would be deleted without deleting. Defaults to true for safety.',
+          },
+        },
+      },
+      execute: async (_id, args) => {
+        const result = await getManager().purgeProject({
+          path: args.path as string | undefined,
+          all: args.all as boolean | undefined,
+          dryRun: args.dry_run as boolean | undefined,
+        });
+        return { ok: true, ...result };
       },
     });
 

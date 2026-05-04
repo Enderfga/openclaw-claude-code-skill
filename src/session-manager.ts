@@ -8,7 +8,10 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import { execFileSync } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
+import { promisify } from 'node:util';
+
+const execFileAsync = promisify(execFile);
 import * as http from 'node:http';
 import { createRequire } from 'node:module';
 
@@ -872,6 +875,35 @@ export class SessionManager {
     }
     // Persist final state (TTL-expired sessions already removed by cleanup)
     savePersistedSessions(this.persistedSessions, this.logger);
+  }
+
+  // ─── Project Purge (CLI 2.1.126) ──────────────────────────────────────
+
+  /**
+   * Wraps `claude project purge` — deletes Claude Code state for a project
+   * (transcripts, tasks, file history, config entry).
+   *
+   * Defaults to dry-run for safety: callers must pass `dryRun: false` to
+   * actually delete. When `all` is true, `path` is ignored.
+   *
+   * The `--yes` flag is always passed (we have no TTY for confirmation prompts);
+   * safety is enforced via the dry-run default at the wrapper level instead.
+   */
+  async purgeProject(opts: {
+    path?: string;
+    all?: boolean;
+    dryRun?: boolean;
+  }): Promise<{ stdout: string; stderr: string; dryRun: boolean }> {
+    const dryRun = opts.dryRun !== false; // default true
+    const args = ['project', 'purge'];
+    if (opts.all) args.push('--all');
+    if (dryRun) args.push('--dry-run');
+    else args.push('--yes');
+    if (!opts.all && opts.path) args.push(path.resolve(opts.path));
+    const { stdout, stderr } = await execFileAsync(this.pluginConfig.claudeBin, args, {
+      maxBuffer: 8 * 1024 * 1024,
+    });
+    return { stdout, stderr, dryRun };
   }
 
   // ─── Auto Proxy ───────────────────────────────────────────────────────

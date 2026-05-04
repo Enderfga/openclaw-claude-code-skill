@@ -232,6 +232,12 @@ export interface SessionConfig {
   otelLogUserPrompts?: boolean;
   /** OpenTelemetry: include raw API request/response bodies in logs (sets OTEL_LOG_RAW_API_BODIES=1) — debug only */
   otelLogRawApiBodies?: boolean;
+  // CLI 2.1.122 features
+  /**
+   * AWS Bedrock service tier (sets ANTHROPIC_BEDROCK_SERVICE_TIER → X-Amzn-Bedrock-Service-Tier header).
+   * Only effective when routing through Bedrock. Values: 'default' | 'flex' | 'priority'.
+   */
+  bedrockServiceTier?: 'default' | 'flex' | 'priority';
   /** Custom engine configuration — required when engine is 'custom' */
   customEngine?: CustomEngineConfig;
 }

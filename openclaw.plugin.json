@@ -77,6 +77,7 @@
       "claude_team_send",
       "claude_session_update_tools",
       "claude_session_switch_model",
+      "claude_project_purge",
       "council_start",
       "council_status",
       "council_abort",

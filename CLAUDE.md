@@ -151,7 +151,7 @@ Current tested versions (update on each release):
 
 | Engine | CLI | Tested Version | Invocation |
 |--------|-----|---------------|------------|
-| Claude | `claude` | 2.1.121 | Persistent subprocess, `--output-format stream-json` |
+| Claude | `claude` | 2.1.126 | Persistent subprocess, `--output-format stream-json` |
 | Codex | `codex` | 0.118.0 | `codex exec --full-auto --skip-git-repo-check -C <dir>` |
 | Gemini | `gemini` | 0.36.0 | `gemini -p <msg> --output-format stream-json --yolo/--sandbox` |
 | Cursor | `agent` | 2026.03.30 | `agent -p <msg> --force --trust --output-format stream-json --workspace <dir>` |

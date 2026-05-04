@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.14.2] - 2026-05-04
+
+### Added — Claude Code CLI 2.1.122 → 2.1.126 sync
+
+Bumped the tested Claude CLI from `2.1.121` to `2.1.126`. Net-new surface from this window:
+
+- **`bedrockServiceTier`** (CLI 2.1.122) — new `SessionConfig` field. Sets `ANTHROPIC_BEDROCK_SERVICE_TIER`, which the CLI forwards as the `X-Amzn-Bedrock-Service-Tier` header. Values: `default | flex | priority`. Only effective when routing through AWS Bedrock.
+- **`claude_project_purge` tool** (CLI 2.1.126) — wraps `claude project purge` to delete Claude Code project state (transcripts, tasks, file history, config entry). **Defaults to dry-run** for safety; pass `dry_run: false` to actually delete. Supports per-path purge or `all: true`.
+
+Skipped (passive / interactive-only): OTel numeric attribute fix and `invocation_trigger` (passive — no wrapper change), `/v1/models` gateway discovery (handled at the gateway, not here), `--dangerously-skip-permissions` scope expansion, PowerShell primary-shell improvements, `/resume` PR-URL search.
+
 ## [2.14.1] - 2026-04-29
 
 ### Fixed

@@ -271,6 +271,8 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
     if (this.options.enableToolSearch) spawnEnv.ENABLE_TOOL_SEARCH = '1';
     if (this.options.otelLogUserPrompts) spawnEnv.OTEL_LOG_USER_PROMPTS = '1';
     if (this.options.otelLogRawApiBodies) spawnEnv.OTEL_LOG_RAW_API_BODIES = '1';
+    // CLI 2.1.122 features
+    if (this.options.bedrockServiceTier) spawnEnv.ANTHROPIC_BEDROCK_SERVICE_TIER = this.options.bedrockServiceTier;
     if (this._realModel && this.options.baseUrl) {
       const base = this.options.baseUrl.replace(/\/$/, '');
       spawnEnv.ANTHROPIC_BASE_URL = `${base}/real/${this._realModel}`;

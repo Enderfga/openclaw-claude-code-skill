@@ -49,6 +49,7 @@ Start a persistent coding session with full CLI flag support.
 | `enableToolSearch` | boolean | Enable Vertex AI tool search (sets `ENABLE_TOOL_SEARCH=1`) |
 | `otelLogUserPrompts` | boolean | OpenTelemetry: log user prompts (sets `OTEL_LOG_USER_PROMPTS=1`) |
 | `otelLogRawApiBodies` | boolean | OpenTelemetry: log raw API request/response bodies (sets `OTEL_LOG_RAW_API_BODIES=1`); debug only |
+| `bedrockServiceTier` | `'default'` \| `'flex'` \| `'priority'` | AWS Bedrock service tier (sets `ANTHROPIC_BEDROCK_SERVICE_TIER`); only effective when routing through Bedrock |
 | `effort` | `'low'` \| `'medium'` \| `'high'` \| `'xhigh'` \| `'max'` \| `'auto'` | Reasoning effort level. `xhigh` is Opus 4.7-only (between `high` and `max`); triggers `ultrathink` prefix on user messages, same as `high` and `max`. |
 
 ### `claude_session_send`
@@ -138,6 +139,22 @@ Hot-swap model mid-conversation. Restarts with `--resume`.
 |-----------|------|----------|
 | `name` | string | yes |
 | `model` | string | yes |
+
+---
+
+## Project State (1)
+
+### `claude_project_purge`
+
+Wraps `claude project purge` (CLI 2.1.126+). Deletes Claude Code state for a project — transcripts, tasks, file history, config entry. **Defaults to dry-run for safety**; pass `dry_run=false` to actually delete. The CLI's confirmation prompt is bypassed by default (`--yes`) since the wrapper has no TTY; safety is enforced upstream via the dry-run default.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `path` | string | | Project path to purge. Resolved to absolute. Ignored when `all=true`. |
+| `all` | boolean | | Purge state for every project. Mutually exclusive with `path`. |
+| `dry_run` | boolean | | List what would be deleted without deleting. **Defaults to `true`.** |
+
+Returns `{ ok, stdout, stderr, dryRun }`.
 
 ---
 
