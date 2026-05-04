@@ -115,554 +115,492 @@ const plugin = {
         gatewayUrl: process.env.GATEWAY_URL,
         gatewayKey: process.env.GATEWAY_KEY,
       });
-      api.registerHttpRoute({
-        path: '/v1/claude-code-proxy',
-        auth: 'gateway',
-        match: 'prefix',
-        handler: proxyHandler as (...args: unknown[]) => Promise<boolean>,
-      });
-    }
-
-    // ─── Tool registration helper ─────────────────────────────────────────
-    //
-    // In v3.0 we renamed the engine-coupled `claude_*` tools to engine-neutral
-    // names (`session_*`, `team_*`, etc.). The old names remain registered as
-    // deprecated aliases for one minor release and will be removed in v3.1.
-    //
-    // The alias's description is prefixed with `[DEPRECATED]` and the new
-    // name so any agent reading the tool list gets a clear hint to migrate.
-    function registerToolWithAliases(
-      def: Parameters<PluginAPI['registerTool']>[0],
-      deprecatedAliases: string[] = [],
-    ): void {
-      api.registerTool(def);
-      for (const alias of deprecatedAliases) {
-        api.registerTool({
-          ...def,
-          name: alias,
-          description: `[DEPRECATED — use ${def.name}; this alias is removed in v3.1] ${def.description}`,
+      for (const path of ['/v1/claw-orchestrator-proxy', '/v1/claude-code-proxy']) {
+        api.registerHttpRoute({
+          path,
+          auth: 'gateway',
+          match: 'prefix',
+          handler: proxyHandler as (...args: unknown[]) => Promise<boolean>,
         });
       }
     }
 
     // ─── Tool: session_start ──────────────────────────────────────────────
 
-    registerToolWithAliases(
-      {
-        name: 'session_start',
-        description:
-          'Start a persistent coding session. Supports multiple engines: claude (default) for Claude Code CLI, codex for OpenAI Codex CLI, gemini for Google Gemini CLI, cursor for Cursor Agent CLI, or custom for any user-configured coding agent CLI.',
-        parameters: {
-          type: 'object',
-          properties: {
-            name: { type: 'string', description: 'Session name (auto-generated if omitted)' },
-            cwd: { type: 'string', description: 'Working directory' },
-            engine: {
-              type: 'string',
-              enum: ['claude', 'codex', 'codex-app', 'gemini', 'cursor', 'custom'],
-              description:
-                'Engine to use (default: claude). codex = `codex exec` per send (no /goal). codex-app = long-running `codex app-server` with /goal support. Use "custom" with customEngine config for any CLI.',
-            },
-            model: { type: 'string', description: 'Model to use (opus, sonnet, haiku, gemini-pro, o4-mini, etc.)' },
-            permissionMode: {
-              type: 'string',
-              enum: ['acceptEdits', 'bypassPermissions', 'default', 'delegate', 'dontAsk', 'plan', 'auto'],
-            },
-            effort: { type: 'string', enum: ['low', 'medium', 'high', 'xhigh', 'max', 'auto'] },
-            allowedTools: { type: 'array', items: { type: 'string' }, description: 'Tools to auto-approve' },
-            disallowedTools: { type: 'array', items: { type: 'string' }, description: 'Tools to deny' },
-            maxTurns: { type: 'number', description: 'Max agent loop turns' },
-            maxBudgetUsd: { type: 'number', description: 'Max API spend (USD)' },
-            systemPrompt: { type: 'string', description: 'Replace system prompt' },
-            appendSystemPrompt: { type: 'string', description: 'Append to system prompt' },
-            agents: { type: 'object', description: 'Custom sub-agents JSON' },
-            agent: { type: 'string', description: 'Default agent to use' },
-            bare: { type: 'boolean', description: 'Minimal mode: skip hooks, LSP, auto-memory, CLAUDE.md' },
-            worktree: { type: ['string', 'boolean'], description: 'Run in git worktree' },
-            fallbackModel: { type: 'string', description: 'Auto fallback when primary overloaded' },
-            jsonSchema: { type: 'string', description: 'JSON Schema for structured output' },
-            mcpConfig: {
-              type: ['string', 'array'],
-              items: { type: 'string' },
-              description: 'MCP server config file(s)',
-            },
-            settings: { type: 'string', description: 'Settings.json path or inline JSON' },
-            noSessionPersistence: { type: 'boolean', description: 'Do not save session to disk' },
-            betas: { type: ['string', 'array'], items: { type: 'string' }, description: 'Custom beta headers' },
-            enableAgentTeams: { type: 'boolean', description: 'Enable experimental agent teams' },
-            enableAutoMode: { type: 'boolean', description: 'Enable auto permission mode' },
-            includeHookEvents: {
-              type: 'boolean',
-              description: 'Stream hook lifecycle events (PreToolUse/PostToolUse)',
-            },
-            permissionPromptTool: {
-              type: 'string',
-              description: 'Delegate permission prompts to this MCP tool (non-interactive)',
-            },
-            excludeDynamicSystemPromptSections: {
-              type: 'boolean',
-              description:
-                'Move cwd/env/git from system prompt to user message for better prompt cache hits (auto-enabled with bare)',
-            },
-            debug: {
-              type: ['string', 'array'],
-              items: { type: 'string' },
-              description: 'Debug categories (e.g. "api", "mcp", "!statsig")',
-            },
-            debugFile: { type: 'string', description: 'Write debug output to file instead of stderr' },
-            fromPr: { type: 'string', description: 'Resume session linked to a GitHub PR number or URL' },
-            channels: {
-              type: ['string', 'array'],
-              items: { type: 'string' },
-              description: 'MCP channel subscriptions (research preview)',
-            },
-            dangerouslyLoadDevelopmentChannels: {
-              type: ['string', 'array'],
-              items: { type: 'string' },
-              description: 'Load development MCP channels',
-            },
-            enablePromptCaching1H: {
-              type: 'boolean',
-              description: 'Enable 1-hour prompt cache TTL (auto-enabled with bare)',
-            },
-            // CLI 2.1.121 features
-            forkSubagent: {
-              type: 'boolean',
-              description: 'Fork subagent for non-interactive sessions (sets CLAUDE_CODE_FORK_SUBAGENT=1)',
-            },
-            enableToolSearch: {
-              type: 'boolean',
-              description: 'Enable Vertex AI tool search (sets ENABLE_TOOL_SEARCH=1)',
-            },
-            otelLogUserPrompts: {
-              type: 'boolean',
-              description: 'OpenTelemetry: log user prompts (sets OTEL_LOG_USER_PROMPTS=1)',
-            },
-            otelLogRawApiBodies: {
-              type: 'boolean',
-              description:
-                'OpenTelemetry: log raw API request/response bodies (debug only, sets OTEL_LOG_RAW_API_BODIES=1)',
-            },
-            // CLI 2.1.122 features
-            bedrockServiceTier: {
-              type: 'string',
-              enum: ['default', 'flex', 'priority'],
-              description:
-                'AWS Bedrock service tier (sets ANTHROPIC_BEDROCK_SERVICE_TIER). Only effective when routing through Bedrock.',
-            },
-            customEngine: {
-              type: 'object',
-              description:
-                'Custom engine config (required when engine="custom"). Defines how to invoke any coding agent CLI.',
-              properties: {
-                name: { type: 'string', description: 'Engine display name' },
-                bin: { type: 'string', description: 'Binary path or command' },
-                binEnv: { type: 'string', description: 'Env var that overrides bin' },
-                persistent: {
-                  type: 'boolean',
-                  description: 'true=long-running subprocess (Claude Code style), false=spawn per send (default)',
-                },
-                args: {
-                  type: 'object',
-                  description: 'CLI flag mappings',
-                  properties: {
-                    print: { type: 'string' },
-                    outputFormat: { type: 'string' },
-                    outputFormatValue: { type: 'string' },
-                    inputFormat: { type: 'string' },
-                    inputFormatValue: { type: 'string' },
-                    skipPermissions: { type: 'string' },
-                    permissionMode: { type: 'string' },
-                    model: { type: 'string' },
-                    systemPrompt: { type: 'string' },
-                    appendSystemPrompt: { type: 'string' },
-                    maxTurns: { type: 'string' },
-                    resume: { type: 'string' },
-                    verbose: { type: 'string' },
-                    replayUserMessages: { type: 'string' },
-                    includePartialMessages: { type: 'string' },
-                    effort: { type: 'string' },
-                    workspace: { type: 'string' },
-                    extra: { type: 'array', items: { type: 'string' } },
-                  },
-                },
-                permissionModes: { type: 'object', description: 'Map OpenClaw permission names to CLI values' },
-                pricing: {
-                  type: 'object',
-                  properties: {
-                    input: { type: 'number' },
-                    output: { type: 'number' },
-                    cached: { type: 'number' },
-                  },
-                },
-                contextWindow: { type: 'number' },
-                env: { type: 'object', description: 'Extra environment variables' },
-                sanitizePatterns: { type: 'array', items: { type: 'string' } },
+    api.registerTool({
+      name: 'session_start',
+      description:
+        'Start a persistent coding session. Supports multiple engines: claude (default) for Claude Code CLI, codex for OpenAI Codex CLI, gemini for Google Gemini CLI, cursor for Cursor Agent CLI, or custom for any user-configured coding agent CLI.',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Session name (auto-generated if omitted)' },
+          cwd: { type: 'string', description: 'Working directory' },
+          engine: {
+            type: 'string',
+            enum: ['claude', 'codex', 'codex-app', 'gemini', 'cursor', 'custom'],
+            description:
+              'Engine to use (default: claude). codex = `codex exec` per send (no /goal). codex-app = long-running `codex app-server` with /goal support. Use "custom" with customEngine config for any CLI.',
+          },
+          model: { type: 'string', description: 'Model to use (opus, sonnet, haiku, gemini-pro, o4-mini, etc.)' },
+          permissionMode: {
+            type: 'string',
+            enum: ['acceptEdits', 'bypassPermissions', 'default', 'delegate', 'dontAsk', 'plan', 'auto'],
+          },
+          effort: { type: 'string', enum: ['low', 'medium', 'high', 'xhigh', 'max', 'auto'] },
+          allowedTools: { type: 'array', items: { type: 'string' }, description: 'Tools to auto-approve' },
+          disallowedTools: { type: 'array', items: { type: 'string' }, description: 'Tools to deny' },
+          maxTurns: { type: 'number', description: 'Max agent loop turns' },
+          maxBudgetUsd: { type: 'number', description: 'Max API spend (USD)' },
+          systemPrompt: { type: 'string', description: 'Replace system prompt' },
+          appendSystemPrompt: { type: 'string', description: 'Append to system prompt' },
+          agents: { type: 'object', description: 'Custom sub-agents JSON' },
+          agent: { type: 'string', description: 'Default agent to use' },
+          bare: { type: 'boolean', description: 'Minimal mode: skip hooks, LSP, auto-memory, CLAUDE.md' },
+          worktree: { type: ['string', 'boolean'], description: 'Run in git worktree' },
+          fallbackModel: { type: 'string', description: 'Auto fallback when primary overloaded' },
+          jsonSchema: { type: 'string', description: 'JSON Schema for structured output' },
+          mcpConfig: {
+            type: ['string', 'array'],
+            items: { type: 'string' },
+            description: 'MCP server config file(s)',
+          },
+          settings: { type: 'string', description: 'Settings.json path or inline JSON' },
+          noSessionPersistence: { type: 'boolean', description: 'Do not save session to disk' },
+          betas: { type: ['string', 'array'], items: { type: 'string' }, description: 'Custom beta headers' },
+          enableAgentTeams: { type: 'boolean', description: 'Enable experimental agent teams' },
+          enableAutoMode: { type: 'boolean', description: 'Enable auto permission mode' },
+          includeHookEvents: {
+            type: 'boolean',
+            description: 'Stream hook lifecycle events (PreToolUse/PostToolUse)',
+          },
+          permissionPromptTool: {
+            type: 'string',
+            description: 'Delegate permission prompts to this MCP tool (non-interactive)',
+          },
+          excludeDynamicSystemPromptSections: {
+            type: 'boolean',
+            description:
+              'Move cwd/env/git from system prompt to user message for better prompt cache hits (auto-enabled with bare)',
+          },
+          debug: {
+            type: ['string', 'array'],
+            items: { type: 'string' },
+            description: 'Debug categories (e.g. "api", "mcp", "!statsig")',
+          },
+          debugFile: { type: 'string', description: 'Write debug output to file instead of stderr' },
+          fromPr: { type: 'string', description: 'Resume session linked to a GitHub PR number or URL' },
+          channels: {
+            type: ['string', 'array'],
+            items: { type: 'string' },
+            description: 'MCP channel subscriptions (research preview)',
+          },
+          dangerouslyLoadDevelopmentChannels: {
+            type: ['string', 'array'],
+            items: { type: 'string' },
+            description: 'Load development MCP channels',
+          },
+          enablePromptCaching1H: {
+            type: 'boolean',
+            description: 'Enable 1-hour prompt cache TTL (auto-enabled with bare)',
+          },
+          // CLI 2.1.121 features
+          forkSubagent: {
+            type: 'boolean',
+            description: 'Fork subagent for non-interactive sessions (sets CLAUDE_CODE_FORK_SUBAGENT=1)',
+          },
+          enableToolSearch: {
+            type: 'boolean',
+            description: 'Enable Vertex AI tool search (sets ENABLE_TOOL_SEARCH=1)',
+          },
+          otelLogUserPrompts: {
+            type: 'boolean',
+            description: 'OpenTelemetry: log user prompts (sets OTEL_LOG_USER_PROMPTS=1)',
+          },
+          otelLogRawApiBodies: {
+            type: 'boolean',
+            description:
+              'OpenTelemetry: log raw API request/response bodies (debug only, sets OTEL_LOG_RAW_API_BODIES=1)',
+          },
+          // CLI 2.1.122 features
+          bedrockServiceTier: {
+            type: 'string',
+            enum: ['default', 'flex', 'priority'],
+            description:
+              'AWS Bedrock service tier (sets ANTHROPIC_BEDROCK_SERVICE_TIER). Only effective when routing through Bedrock.',
+          },
+          customEngine: {
+            type: 'object',
+            description:
+              'Custom engine config (required when engine="custom"). Defines how to invoke any coding agent CLI.',
+            properties: {
+              name: { type: 'string', description: 'Engine display name' },
+              bin: { type: 'string', description: 'Binary path or command' },
+              binEnv: { type: 'string', description: 'Env var that overrides bin' },
+              persistent: {
+                type: 'boolean',
+                description: 'true=long-running subprocess, false=spawn per send (default)',
               },
-              required: ['name', 'bin', 'args'],
+              args: {
+                type: 'object',
+                description: 'CLI flag mappings',
+                properties: {
+                  print: { type: 'string' },
+                  outputFormat: { type: 'string' },
+                  outputFormatValue: { type: 'string' },
+                  inputFormat: { type: 'string' },
+                  inputFormatValue: { type: 'string' },
+                  skipPermissions: { type: 'string' },
+                  permissionMode: { type: 'string' },
+                  model: { type: 'string' },
+                  systemPrompt: { type: 'string' },
+                  appendSystemPrompt: { type: 'string' },
+                  maxTurns: { type: 'string' },
+                  resume: { type: 'string' },
+                  verbose: { type: 'string' },
+                  replayUserMessages: { type: 'string' },
+                  includePartialMessages: { type: 'string' },
+                  effort: { type: 'string' },
+                  workspace: { type: 'string' },
+                  extra: { type: 'array', items: { type: 'string' } },
+                },
+              },
+              permissionModes: { type: 'object', description: 'Map OpenClaw permission names to CLI values' },
+              pricing: {
+                type: 'object',
+                properties: {
+                  input: { type: 'number' },
+                  output: { type: 'number' },
+                  cached: { type: 'number' },
+                },
+              },
+              contextWindow: { type: 'number' },
+              env: { type: 'object', description: 'Extra environment variables' },
+              sanitizePatterns: { type: 'array', items: { type: 'string' } },
             },
-            resumeSessionId: {
-              type: 'string',
-              description:
-                'Resume an existing Claude Code session by its ID (e.g. from ~/.claude/sessions/). Replays conversation history via session/load instead of starting fresh.',
-            },
+            required: ['name', 'bin', 'args'],
+          },
+          resumeSessionId: {
+            type: 'string',
+            description:
+              'Resume an existing Claude Code session by its ID (e.g. from ~/.claude/sessions/). Replays conversation history via session/load instead of starting fresh.',
           },
         },
-        execute: async (_id, args) => {
-          const sanitized = { ...args };
-          if (sanitized.cwd) sanitized.cwd = sanitizeCwd(sanitized.cwd as string);
-          const info = await getManager().startSession(sanitized as Parameters<SessionManager['startSession']>[0]);
-          return { ok: true, ...info };
-        },
       },
-      ['claude_session_start'],
-    );
+      execute: async (_id, args) => {
+        const sanitized = { ...args };
+        if (sanitized.cwd) sanitized.cwd = sanitizeCwd(sanitized.cwd as string);
+        const info = await getManager().startSession(sanitized as Parameters<SessionManager['startSession']>[0]);
+        return { ok: true, ...info };
+      },
+    });
 
     // ─── Tool: session_send ───────────────────────────────────────────────
 
-    registerToolWithAliases(
-      {
-        name: 'session_send',
-        description: 'Send a message to a persistent Claude Code session and get the response',
-        parameters: {
-          type: 'object',
-          properties: {
-            name: { type: 'string', description: 'Session name' },
-            message: { type: 'string', description: 'Message to send' },
-            effort: {
-              type: 'string',
-              enum: ['low', 'medium', 'high', 'xhigh', 'max'],
-              description: 'Effort for this message',
-            },
-            plan: { type: 'boolean', description: 'Enable plan mode' },
-            timeout: { type: 'number', description: 'Timeout in ms (default 300000)' },
-            stream: {
-              type: 'boolean',
-              description:
-                'Collect text chunks as they arrive and include them in result.chunks[] (default false). Note: OpenClaw plugin SDK does not yet support mid-tool streaming to the caller, so chunks are buffered and returned with the final result.',
-            },
+    api.registerTool({
+      name: 'session_send',
+      description: 'Send a message to a persistent coding session and get the response',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Session name' },
+          message: { type: 'string', description: 'Message to send' },
+          effort: {
+            type: 'string',
+            enum: ['low', 'medium', 'high', 'xhigh', 'max'],
+            description: 'Effort for this message',
           },
-          required: ['name', 'message'],
+          plan: { type: 'boolean', description: 'Enable plan mode' },
+          timeout: { type: 'number', description: 'Timeout in ms (default 300000)' },
+          stream: {
+            type: 'boolean',
+            description:
+              'Collect text chunks as they arrive and include them in result.chunks[] (default false). Note: OpenClaw plugin SDK does not yet support mid-tool streaming to the caller, so chunks are buffered and returned with the final result.',
+          },
         },
-        execute: async (_id, args) => {
-          const wantChunks = args.stream as boolean | undefined;
-          const chunks: string[] = [];
-
-          const result = await getManager().sendMessage(args.name as string, args.message as string, {
-            effort: args.effort as EffortLevel | undefined,
-            plan: args.plan as boolean | undefined,
-            timeout: args.timeout as number | undefined,
-            // When stream:true, collect chunks into array for caller.
-            // True mid-tool streaming requires SDK-level support (not yet available).
-            onChunk: wantChunks
-              ? (chunk: string) => {
-                  chunks.push(chunk);
-                }
-              : undefined,
-          });
-          return {
-            ok: true,
-            ...result,
-            ...(wantChunks ? { chunks } : {}),
-          };
-        },
+        required: ['name', 'message'],
       },
-      ['claude_session_send'],
-    );
+      execute: async (_id, args) => {
+        const wantChunks = args.stream as boolean | undefined;
+        const chunks: string[] = [];
+
+        const result = await getManager().sendMessage(args.name as string, args.message as string, {
+          effort: args.effort as EffortLevel | undefined,
+          plan: args.plan as boolean | undefined,
+          timeout: args.timeout as number | undefined,
+          // When stream:true, collect chunks into array for caller.
+          // True mid-tool streaming requires SDK-level support (not yet available).
+          onChunk: wantChunks
+            ? (chunk: string) => {
+                chunks.push(chunk);
+              }
+            : undefined,
+        });
+        return {
+          ok: true,
+          ...result,
+          ...(wantChunks ? { chunks } : {}),
+        };
+      },
+    });
 
     // ─── Tool: session_stop ───────────────────────────────────────────────
 
-    registerToolWithAliases(
-      {
-        name: 'session_stop',
-        description: 'Stop a persistent Claude Code session',
-        parameters: {
-          type: 'object',
-          properties: { name: { type: 'string', description: 'Session name' } },
-          required: ['name'],
-        },
-        execute: async (_id, args) => {
-          await getManager().stopSession(args.name as string);
-          return { ok: true };
-        },
+    api.registerTool({
+      name: 'session_stop',
+      description: 'Stop a persistent coding session',
+      parameters: {
+        type: 'object',
+        properties: { name: { type: 'string', description: 'Session name' } },
+        required: ['name'],
       },
-      ['claude_session_stop'],
-    );
+      execute: async (_id, args) => {
+        await getManager().stopSession(args.name as string);
+        return { ok: true };
+      },
+    });
 
     // ─── Tool: session_list ───────────────────────────────────────────────
 
-    registerToolWithAliases(
-      {
-        name: 'session_list',
-        description: 'List all active Claude Code sessions',
-        parameters: { type: 'object', properties: {} },
-        execute: async (_id) => {
-          if (!manager) return { ok: true, sessions: [], persisted: [] };
-          return { ok: true, sessions: manager.listSessions(), persisted: manager.listPersistedSessions() };
-        },
+    api.registerTool({
+      name: 'session_list',
+      description: 'List all active coding sessions',
+      parameters: { type: 'object', properties: {} },
+      execute: async (_id) => {
+        if (!manager) return { ok: true, sessions: [], persisted: [] };
+        return { ok: true, sessions: manager.listSessions(), persisted: manager.listPersistedSessions() };
       },
-      ['claude_session_list'],
-    );
+    });
 
     // ─── Tool: sessions_overview ──────────────────────────────────────────
 
-    registerToolWithAliases(
-      {
-        name: 'sessions_overview',
-        description:
-          'Get an aggregate overview of all active Claude Code sessions — readiness, busy/paused state, cost, context usage, and last activity for each. Use this for a dashboard view across all sessions. For single-session detail, use session_status instead.',
-        parameters: { type: 'object', properties: {} },
-        execute: async (_id) => {
-          if (!manager)
-            return {
-              ok: true,
-              version: 'unknown',
-              sessions: 0,
-              sessionNames: [],
-              uptime: process.uptime(),
-              details: [],
-            };
-          return manager.health();
-        },
+    api.registerTool({
+      name: 'sessions_overview',
+      description:
+        'Get an aggregate overview of all active coding sessions — readiness, busy/paused state, cost, context usage, and last activity for each. Use this for a dashboard view across all sessions. For single-session detail, use session_status instead.',
+      parameters: { type: 'object', properties: {} },
+      execute: async (_id) => {
+        if (!manager)
+          return {
+            ok: true,
+            version: 'unknown',
+            sessions: 0,
+            sessionNames: [],
+            uptime: process.uptime(),
+            details: [],
+          };
+        return manager.health();
       },
-      ['claude_sessions_overview'],
-    );
+    });
 
     // ─── Tool: session_status ─────────────────────────────────────────────
 
-    registerToolWithAliases(
-      {
-        name: 'session_status',
-        description: 'Get detailed status of a Claude Code session (context %, tokens, cost, uptime)',
-        parameters: {
-          type: 'object',
-          properties: { name: { type: 'string', description: 'Session name' } },
-          required: ['name'],
-        },
-        execute: async (_id, args) => {
-          const status = getManager().getStatus(args.name as string);
-          return { ok: true, ...status };
-        },
+    api.registerTool({
+      name: 'session_status',
+      description: 'Get detailed status of a coding session (context %, tokens, cost, uptime)',
+      parameters: {
+        type: 'object',
+        properties: { name: { type: 'string', description: 'Session name' } },
+        required: ['name'],
       },
-      ['claude_session_status'],
-    );
+      execute: async (_id, args) => {
+        const status = getManager().getStatus(args.name as string);
+        return { ok: true, ...status };
+      },
+    });
 
     // ─── Tool: session_grep ───────────────────────────────────────────────
 
-    registerToolWithAliases(
-      {
-        name: 'session_grep',
-        description: 'Search session history for events matching a regex pattern',
-        parameters: {
-          type: 'object',
-          properties: {
-            name: { type: 'string', description: 'Session name' },
-            pattern: { type: 'string', description: 'Regex pattern to search' },
-            limit: { type: 'number', description: 'Max results (default 50)' },
-          },
-          required: ['name', 'pattern'],
+    api.registerTool({
+      name: 'session_grep',
+      description: 'Search session history for events matching a regex pattern',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Session name' },
+          pattern: { type: 'string', description: 'Regex pattern to search' },
+          limit: { type: 'number', description: 'Max results (default 50)' },
         },
-        execute: async (_id, args) => {
-          validateRegex(args.pattern as string);
-          const matches = await getManager().grepSession(
-            args.name as string,
-            args.pattern as string,
-            args.limit as number | undefined,
-          );
-          return { ok: true, count: matches.length, matches };
-        },
+        required: ['name', 'pattern'],
       },
-      ['claude_session_grep'],
-    );
+      execute: async (_id, args) => {
+        validateRegex(args.pattern as string);
+        const matches = await getManager().grepSession(
+          args.name as string,
+          args.pattern as string,
+          args.limit as number | undefined,
+        );
+        return { ok: true, count: matches.length, matches };
+      },
+    });
 
     // ─── Tool: session_compact ────────────────────────────────────────────
 
-    registerToolWithAliases(
-      {
-        name: 'session_compact',
-        description: 'Compact a session to reclaim context window space',
-        parameters: {
-          type: 'object',
-          properties: {
-            name: { type: 'string', description: 'Session name' },
-            summary: { type: 'string', description: 'Optional summary for compaction' },
-          },
-          required: ['name'],
+    api.registerTool({
+      name: 'session_compact',
+      description: 'Compact a session to reclaim context window space',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Session name' },
+          summary: { type: 'string', description: 'Optional summary for compaction' },
         },
-        execute: async (_id, args) => {
-          await getManager().compactSession(args.name as string, args.summary as string | undefined);
-          return { ok: true };
-        },
+        required: ['name'],
       },
-      ['claude_session_compact'],
-    );
+      execute: async (_id, args) => {
+        await getManager().compactSession(args.name as string, args.summary as string | undefined);
+        return { ok: true };
+      },
+    });
 
     // ─── Tool: agents_list ────────────────────────────────────────────────
 
-    registerToolWithAliases(
-      {
-        name: 'agents_list',
-        description: 'List agent definitions from .claude/agents/',
-        parameters: {
-          type: 'object',
-          properties: { cwd: { type: 'string', description: 'Project directory' } },
-        },
-        execute: async (_id, args) => {
-          const agents = getManager().listAgents(sanitizeCwd(args.cwd as string | undefined));
-          return { ok: true, agents };
-        },
+    api.registerTool({
+      name: 'agents_list',
+      description: 'List agent definitions from .claude/agents/',
+      parameters: {
+        type: 'object',
+        properties: { cwd: { type: 'string', description: 'Project directory' } },
       },
-      ['claude_agents_list'],
-    );
+      execute: async (_id, args) => {
+        const agents = getManager().listAgents(sanitizeCwd(args.cwd as string | undefined));
+        return { ok: true, agents };
+      },
+    });
 
     // ─── Tool: team_list ──────────────────────────────────────────────────
 
-    registerToolWithAliases(
-      {
-        name: 'team_list',
-        description: 'List teammates in an agent team session (requires enableAgentTeams)',
-        parameters: {
-          type: 'object',
-          properties: { name: { type: 'string', description: 'Session name' } },
-          required: ['name'],
-        },
-        execute: async (_id, args) => {
-          const response = await getManager().teamList(args.name as string);
-          return { ok: true, response };
-        },
+    api.registerTool({
+      name: 'team_list',
+      description: 'List teammates in an agent team session (requires enableAgentTeams)',
+      parameters: {
+        type: 'object',
+        properties: { name: { type: 'string', description: 'Session name' } },
+        required: ['name'],
       },
-      ['claude_team_list'],
-    );
+      execute: async (_id, args) => {
+        const response = await getManager().teamList(args.name as string);
+        return { ok: true, response };
+      },
+    });
 
     // ─── Tool: team_send ──────────────────────────────────────────────────
 
-    registerToolWithAliases(
-      {
-        name: 'team_send',
-        description: 'Send a message to a specific teammate in an agent team session',
-        parameters: {
-          type: 'object',
-          properties: {
-            name: { type: 'string', description: 'Session name' },
-            teammate: { type: 'string', description: 'Teammate name' },
-            message: { type: 'string', description: 'Message to send' },
-          },
-          required: ['name', 'teammate', 'message'],
+    api.registerTool({
+      name: 'team_send',
+      description: 'Send a message to a specific teammate in an agent team session',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Session name' },
+          teammate: { type: 'string', description: 'Teammate name' },
+          message: { type: 'string', description: 'Message to send' },
         },
-        execute: async (_id, args) => {
-          const result = await getManager().teamSend(
-            args.name as string,
-            args.teammate as string,
-            args.message as string,
-          );
-          return { ok: true, ...result };
-        },
+        required: ['name', 'teammate', 'message'],
       },
-      ['claude_team_send'],
-    );
+      execute: async (_id, args) => {
+        const result = await getManager().teamSend(
+          args.name as string,
+          args.teammate as string,
+          args.message as string,
+        );
+        return { ok: true, ...result };
+      },
+    });
 
     // ─── Tool: session_update_tools ───────────────────────────────────────
 
-    registerToolWithAliases(
-      {
-        name: 'session_update_tools',
-        description:
-          'Update allowedTools or disallowedTools for a running session. Restarts the session process with --resume to apply the new tool constraints while preserving conversation history. Rejects if the session is currently busy.',
-        parameters: {
-          type: 'object',
-          properties: {
-            name: { type: 'string', description: 'Session name' },
-            allowedTools: {
-              type: 'array',
-              items: { type: 'string' },
-              description: 'New allowedTools list (replaces existing, or merges if merge:true)',
-            },
-            disallowedTools: {
-              type: 'array',
-              items: { type: 'string' },
-              description: 'New disallowedTools list (replaces existing, or merges if merge:true)',
-            },
-            removeTools: {
-              type: 'array',
-              items: { type: 'string' },
-              description: 'Tools to remove from allowedTools/disallowedTools (applied after merge)',
-            },
-            merge: { type: 'boolean', description: 'Merge with existing lists instead of replacing (default false)' },
+    api.registerTool({
+      name: 'session_update_tools',
+      description:
+        'Update allowedTools or disallowedTools for a running session. Restarts the session process with --resume to apply the new tool constraints while preserving conversation history. Rejects if the session is currently busy.',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Session name' },
+          allowedTools: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'New allowedTools list (replaces existing, or merges if merge:true)',
           },
-          required: ['name'],
+          disallowedTools: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'New disallowedTools list (replaces existing, or merges if merge:true)',
+          },
+          removeTools: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Tools to remove from allowedTools/disallowedTools (applied after merge)',
+          },
+          merge: { type: 'boolean', description: 'Merge with existing lists instead of replacing (default false)' },
         },
-        execute: async (_id, args) => {
-          const info = await getManager().updateTools(args.name as string, {
-            allowedTools: args.allowedTools as string[] | undefined,
-            disallowedTools: args.disallowedTools as string[] | undefined,
-            removeTools: args.removeTools as string[] | undefined,
-            merge: args.merge as boolean | undefined,
-          });
-          return { ok: true, restarted: true, ...info };
-        },
+        required: ['name'],
       },
-      ['claude_session_update_tools'],
-    );
+      execute: async (_id, args) => {
+        const info = await getManager().updateTools(args.name as string, {
+          allowedTools: args.allowedTools as string[] | undefined,
+          disallowedTools: args.disallowedTools as string[] | undefined,
+          removeTools: args.removeTools as string[] | undefined,
+          merge: args.merge as boolean | undefined,
+        });
+        return { ok: true, restarted: true, ...info };
+      },
+    });
 
     // ─── Tool: session_switch_model ───────────────────────────────────────
 
-    registerToolWithAliases(
-      {
-        name: 'session_switch_model',
-        description:
-          'Switch the model for a running session immediately. Restarts the session process with --resume so the new model takes effect on the next message while preserving conversation history.',
-        parameters: {
-          type: 'object',
-          properties: {
-            name: { type: 'string', description: 'Session name' },
-            model: { type: 'string', description: 'New model (opus, sonnet, haiku, gemini-pro, etc.)' },
-          },
-          required: ['name', 'model'],
+    api.registerTool({
+      name: 'session_switch_model',
+      description:
+        'Switch the model for a running session immediately. Restarts the session process with --resume so the new model takes effect on the next message while preserving conversation history.',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Session name' },
+          model: { type: 'string', description: 'New model (opus, sonnet, haiku, gemini-pro, etc.)' },
         },
-        execute: async (_id, args) => {
-          const info = await getManager().switchModel(args.name as string, args.model as string);
-          return { ok: true, restarted: true, ...info };
-        },
+        required: ['name', 'model'],
       },
-      ['claude_session_switch_model'],
-    );
+      execute: async (_id, args) => {
+        const info = await getManager().switchModel(args.name as string, args.model as string);
+        return { ok: true, restarted: true, ...info };
+      },
+    });
 
     // ─── Tool: project_purge (CLI 2.1.126) ────────────────────────────────
 
-    registerToolWithAliases(
-      {
-        name: 'project_purge',
-        description:
-          'Delete Claude Code project state (transcripts, tasks, file history, config entry) via `claude project purge`. Defaults to dry-run for safety — pass dry_run=false to actually delete. Use all=true to purge every project.',
-        parameters: {
-          type: 'object',
-          properties: {
-            path: {
-              type: 'string',
-              description:
-                'Project path to purge (resolved to absolute). Ignored when all=true. Defaults to current cwd.',
-            },
-            all: {
-              type: 'boolean',
-              description: 'Purge state for every project. Mutually exclusive with path.',
-            },
-            dry_run: {
-              type: 'boolean',
-              description: 'List what would be deleted without deleting. Defaults to true for safety.',
-            },
+    api.registerTool({
+      name: 'project_purge',
+      description:
+        'Delete Claude Code project state (transcripts, tasks, file history, config entry) via `claude project purge`. Defaults to dry-run for safety — pass dry_run=false to actually delete. Use all=true to purge every project.',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: {
+            type: 'string',
+            description:
+              'Project path to purge (resolved to absolute). Ignored when all=true. Defaults to current cwd.',
+          },
+          all: {
+            type: 'boolean',
+            description: 'Purge state for every project. Mutually exclusive with path.',
+          },
+          dry_run: {
+            type: 'boolean',
+            description: 'List what would be deleted without deleting. Defaults to true for safety.',
           },
         },
-        execute: async (_id, args) => {
-          const result = await getManager().purgeProject({
-            path: args.path as string | undefined,
-            all: args.all as boolean | undefined,
-            dryRun: args.dry_run as boolean | undefined,
-          });
-          return { ok: true, ...result };
-        },
       },
-      ['claude_project_purge'],
-    );
+      execute: async (_id, args) => {
+        const result = await getManager().purgeProject({
+          path: args.path as string | undefined,
+          all: args.all as boolean | undefined,
+          dryRun: args.dry_run as boolean | undefined,
+        });
+        return { ok: true, ...result };
+      },
+    });
 
     // ─── Tool: codex_resume (Codex 0.119+) ──────────────────────────────
 
@@ -1008,78 +946,69 @@ const plugin = {
 
     // ─── Tool: session_send_to ────────────────────────────────────────────
 
-    registerToolWithAliases(
-      {
-        name: 'session_send_to',
-        description:
-          'Send a cross-session message from one session to another. If the target is idle, the message is delivered immediately. If busy, it is queued in the inbox for later delivery. Use "*" as target to broadcast to all other sessions.',
-        parameters: {
-          type: 'object',
-          properties: {
-            from: { type: 'string', description: 'Sender session name' },
-            to: { type: 'string', description: 'Target session name, or "*" for broadcast' },
-            message: { type: 'string', description: 'Message text' },
-            summary: { type: 'string', description: 'Short preview (5-10 words)' },
-          },
-          required: ['from', 'to', 'message'],
+    api.registerTool({
+      name: 'session_send_to',
+      description:
+        'Send a cross-session message from one session to another. If the target is idle, the message is delivered immediately. If busy, it is queued in the inbox for later delivery. Use "*" as target to broadcast to all other sessions.',
+      parameters: {
+        type: 'object',
+        properties: {
+          from: { type: 'string', description: 'Sender session name' },
+          to: { type: 'string', description: 'Target session name, or "*" for broadcast' },
+          message: { type: 'string', description: 'Message text' },
+          summary: { type: 'string', description: 'Short preview (5-10 words)' },
         },
-        execute: async (_id, args) => {
-          const result = await getManager().sessionSendTo(
-            args.from as string,
-            args.to as string,
-            args.message as string,
-            args.summary as string | undefined,
-          );
-          return { ok: true, ...result };
-        },
+        required: ['from', 'to', 'message'],
       },
-      ['claude_session_send_to'],
-    );
+      execute: async (_id, args) => {
+        const result = await getManager().sessionSendTo(
+          args.from as string,
+          args.to as string,
+          args.message as string,
+          args.summary as string | undefined,
+        );
+        return { ok: true, ...result };
+      },
+    });
 
     // ─── Tool: session_inbox ──────────────────────────────────────────────
 
-    registerToolWithAliases(
-      {
-        name: 'session_inbox',
-        description: 'Read inbox messages for a session. Returns unread messages by default.',
-        parameters: {
-          type: 'object',
-          properties: {
-            name: { type: 'string', description: 'Session name' },
-            unreadOnly: { type: 'boolean', description: 'Only unread messages (default true)' },
-          },
-          required: ['name'],
+    api.registerTool({
+      name: 'session_inbox',
+      description: 'Read inbox messages for a session. Returns unread messages by default.',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Session name' },
+          unreadOnly: { type: 'boolean', description: 'Only unread messages (default true)' },
         },
-        execute: async (_id, args) => {
-          const messages = getManager().sessionInbox(
-            args.name as string,
-            (args.unreadOnly as boolean | undefined) ?? true,
-          );
-          return { ok: true, count: messages.length, messages };
-        },
+        required: ['name'],
       },
-      ['claude_session_inbox'],
-    );
+      execute: async (_id, args) => {
+        const messages = getManager().sessionInbox(
+          args.name as string,
+          (args.unreadOnly as boolean | undefined) ?? true,
+        );
+        return { ok: true, count: messages.length, messages };
+      },
+    });
 
     // ─── Tool: session_deliver_inbox ──────────────────────────────────────
 
-    registerToolWithAliases(
-      {
-        name: 'session_deliver_inbox',
-        description:
-          'Deliver all queued inbox messages to an idle session. Call this when a session finishes a task to process waiting messages.',
-        parameters: {
-          type: 'object',
-          properties: { name: { type: 'string', description: 'Session name' } },
-          required: ['name'],
-        },
-        execute: async (_id, args) => {
-          const count = await getManager().sessionDeliverInbox(args.name as string);
-          return { ok: true, delivered: count };
-        },
+    api.registerTool({
+      name: 'session_deliver_inbox',
+      description:
+        'Deliver all queued inbox messages to an idle session. Call this when a session finishes a task to process waiting messages.',
+      parameters: {
+        type: 'object',
+        properties: { name: { type: 'string', description: 'Session name' } },
+        required: ['name'],
       },
-      ['claude_session_deliver_inbox'],
-    );
+      execute: async (_id, args) => {
+        const count = await getManager().sessionDeliverInbox(args.name as string);
+        return { ok: true, delivered: count };
+      },
+    });
 
     // ─── Tool: ultraplan_start ──────────────────────────────────────
 

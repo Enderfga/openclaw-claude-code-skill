@@ -2,8 +2,6 @@
 
 All tools are registered as Claw Orchestrator plugin tools. In standalone mode, they're accessible via the embedded HTTP server.
 
-> **v3.0 rename:** Tools previously prefixed with `claude_` are now engine-neutral. The old names (`session_start`, `session_send`, `session_stop`, `session_list`, `sessions_overview`, `session_status`, `session_grep`, `session_compact`, `agents_list`, `team_list`, `team_send`, `session_update_tools`, `session_switch_model`, `project_purge`, `session_send_to`, `session_inbox`, `session_deliver_inbox`) remain registered as deprecated aliases through the v3.0.x line and will be removed in v3.1. New code should use the canonical names below. The `codex_*`, `council_*`, `ultraplan_*`, `ultrareview_*` tool names are unchanged.
-
 ## Session Lifecycle (5)
 
 ### `session_start`

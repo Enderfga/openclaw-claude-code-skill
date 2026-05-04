@@ -784,7 +784,7 @@ export class SessionManager {
 
   /**
    * Returns an overview of all active sessions — analogous to a dashboard.
-   * Unlike claude_session_status (single session), this gives the aggregate
+   * Unlike session_status (single session), this gives the aggregate
    * view: how many sessions are running, which are busy, total uptime, etc.
    */
   health(): {

@@ -58,9 +58,9 @@ console.log(`Delivered ${count} queued messages`);
 
 | Tool | Description |
 |------|-------------|
-| `claude_session_send_to` | Send message between sessions |
-| `claude_session_inbox` | Read inbox messages |
-| `claude_session_deliver_inbox` | Deliver queued messages to idle session |
+| `session_send_to` | Send message between sessions |
+| `session_inbox` | Read inbox messages |
+| `session_deliver_inbox` | Deliver queued messages to idle session |
 
 ## Message Format
 

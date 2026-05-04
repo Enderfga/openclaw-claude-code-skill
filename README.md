@@ -99,8 +99,6 @@ council_start         council_review       council_accept
 ultraplan_start       ultrareview_start
 ```
 
-(For backward compatibility with v2.x callers, the legacy `claude_session_*` aliases remain registered through v3.0.x and will be removed in v3.1.)
-
 ---
 
 ## Quick Start
@@ -113,8 +111,8 @@ clawo serve
 ```
 
 ```bash
-clawo session start --engine claude --name fix-tests --cwd .
-clawo session send fix-tests "Fix the failing tests"
+clawo session-start fix-tests --engine claude --cwd .
+clawo session-send fix-tests "Fix the failing tests"
 ```
 
 ### Programmatic
@@ -141,7 +139,7 @@ If you run OpenClaw, Claw Orchestrator installs as a managed plugin. The same to
 curl -fsSL https://raw.githubusercontent.com/Enderfga/claw-orchestrator/main/install.sh | bash
 ```
 
-This installs via npm, registers the plugin in `~/.openclaw/openclaw.json`, and restarts the gateway. See [`skills/references/getting-started.md`](./skills/references/getting-started.md) for the full setup, including upgrading from `openclaw-claude-code` v2.x.
+This installs via npm, registers the plugin in `~/.openclaw/openclaw.json`, and restarts the gateway. See [`skills/references/getting-started.md`](./skills/references/getting-started.md) for the full setup.
 
 ---
 
@@ -183,15 +181,15 @@ For source-level architecture, see [`CLAUDE.md`](./CLAUDE.md). For deeper refere
 
 ---
 
-## Migrating from `@enderfga/openclaw-claude-code` (v2.x)
+## Migrating from v2.x
 
-v3.0 renames the package, the CLI binary, and the tool API.
+v3.x uses the Claw Orchestrator package, `clawo` CLI, and engine-neutral tool API. The v3.0 compatibility aliases were removed in v3.1.0.
 
-| What | v2.x | v3.0 |
+| What | v2.x | Current |
 |---|---|---|
 | npm package | `@enderfga/openclaw-claude-code` | `@enderfga/claw-orchestrator` |
-| CLI binary | `claude-code-skill` | `clawo` (the old name still works in v3.0.x) |
-| Tool names | `claude_session_start`, `claude_session_send`, ... | `session_start`, `session_send`, ... (old names still work in v3.0.x) |
+| CLI binary | `claude-code-skill` | `clawo` |
+| Tool names | `claude_session_start`, `claude_session_send`, ... | `session_start`, `session_send`, ... |
 | OpenClaw plugin id | `openclaw-claude-code` | `claw-orchestrator` |
 
 To upgrade:
@@ -199,11 +197,10 @@ To upgrade:
 ```bash
 npm uninstall -g @enderfga/openclaw-claude-code
 npm install -g @enderfga/claw-orchestrator
-# If you use OpenClaw, the install.sh handles the plugin entry migration:
 curl -fsSL https://raw.githubusercontent.com/Enderfga/claw-orchestrator/main/install.sh | bash
 ```
 
-The legacy aliases (`claude-code-skill` binary and `claude_*` tool names) remain registered for the duration of v3.0.x. They will be removed in v3.1; update your scripts before upgrading.
+If your OpenClaw config still has an old plugin entry, remove it and register `claw-orchestrator`. Update scripts and tool callers before moving to v3.1.0 or newer.
 
 ---
 

@@ -6,16 +6,13 @@
  * This CLI is just an HTTP client — zero configuration needed.
  *
  * For standalone use (no OpenClaw), run: clawo serve
- *
- * Note: this file is also exposed as `claude-code-skill` for backward
- * compatibility with v2.x installations. The alias will be removed in v3.1.
  */
 
 import { Command } from 'commander';
 import { createRequire } from 'node:module';
 
 function getBaseUrl(): string {
-  return process.env.CLAUDE_CODE_API_URL || 'http://127.0.0.1:18796';
+  return process.env.CLAWO_API_URL || process.env.CLAUDE_CODE_API_URL || 'http://127.0.0.1:18796';
 }
 
 function getCliVersion(): string {
@@ -49,10 +46,7 @@ async function api(path: string, method = 'GET', body?: unknown): Promise<Record
 // ─── CLI ─────────────────────────────────────────────────────────────────────
 
 const program = new Command();
-// Use argv[1] basename so the help text reflects which alias the user invoked
-// (clawo vs. claude-code-skill). Both binaries point at this same file.
-const invokedAs = (process.argv[1] || '').split('/').pop() || 'clawo';
-program.name(invokedAs).description('Claw Orchestrator CLI').version(getCliVersion());
+program.name('clawo').description('Claw Orchestrator CLI').version(getCliVersion());
 
 // Serve (standalone mode — no OpenClaw needed)
 program

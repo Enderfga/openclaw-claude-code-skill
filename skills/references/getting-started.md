@@ -16,8 +16,6 @@ clawo session-send myproject "fix the auth bug"
 clawo session-stop myproject
 ```
 
-> **Migrating from v2.x?** The legacy binary `claude-code-skill` is still installed alongside `clawo` for the duration of the v3.0.x line; both invoke the same script. Plan to migrate scripts to `clawo` before upgrading to v3.1.
-
 ### As OpenClaw Plugin
 
 ```bash

@@ -2,15 +2,13 @@
 
 The CLI is an HTTP client that talks to the Claw Orchestrator embedded server. In plugin mode, the server auto-starts. In standalone mode, run `clawo serve` first.
 
-> **v2.x → v3.0:** The binary was renamed from `claude-code-skill` to `clawo`. The old binary is still installed as an alias for the duration of v3.0.x and will be removed in v3.1. Update scripts to use `clawo` before upgrading.
-
 ## Server
 
 ```bash
 clawo serve [-p, --port <port>]
 ```
 
-Start standalone embedded server (default port 18796). Set `CLAUDE_CODE_API_URL` to override the base URL.
+Start standalone embedded server (default port 18796). Set `CLAWO_API_URL` to override the base URL.
 
 ### Rate Limiting
 

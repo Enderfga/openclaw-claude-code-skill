@@ -154,7 +154,7 @@ If the plugin crashes without calling `stop()`, child CLI processes (claude, cod
 
 ## Stats & Monitoring
 
-Session stats are returned by `getStats()` and surfaced through `claude_session_status`.
+Session stats are returned by `getStats()` and surfaced through `session_status`.
 
 Fields added in plugin v2.13.0 (Claude CLI 2.1.111):
 
@@ -171,7 +171,7 @@ Fields added in plugin v2.14.0 (Claude CLI 2.1.121):
 
 ### `system/api_retry` events
 
-When Claude Code CLI performs an API retry (transient errors, overload, etc.) it emits a `system` event with subtype `api_retry`. The plugin parses these events and increments `retries` / updates `lastRetryError` in the session stats. These events are also visible in the session event history returned by `claude_session_grep`.
+When Claude Code CLI performs an API retry (transient errors, overload, etc.) it emits a `system` event with subtype `api_retry`. The plugin parses these events and increments `retries` / updates `lastRetryError` in the session stats. These events are also visible in the session event history returned by `session_grep`.
 
 ```typescript
 const status = manager.getStatus('my-task');

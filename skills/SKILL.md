@@ -58,20 +58,20 @@ Claw Orchestrator — persistent multi-engine coding session manager for claw-st
 
 ```javascript
 // 1. Start session (any engine)
-claude_session_start({ name: "myproject", cwd: "/path/to/project", engine: "claude" })
-claude_session_start({ name: "codex-task", cwd: "/path/to/project", engine: "codex" })
-claude_session_start({ name: "gemini-task", cwd: "/path/to/project", engine: "gemini" })
-claude_session_start({ name: "cursor-task", cwd: "/path/to/project", engine: "cursor" })
+session_start({ name: "myproject", cwd: "/path/to/project", engine: "claude" })
+session_start({ name: "codex-task", cwd: "/path/to/project", engine: "codex" })
+session_start({ name: "gemini-task", cwd: "/path/to/project", engine: "gemini" })
+session_start({ name: "cursor-task", cwd: "/path/to/project", engine: "cursor" })
 
 // 2. Send messages
-claude_session_send({ name: "myproject", message: "Fix the auth bug" })
+session_send({ name: "myproject", message: "Fix the auth bug" })
 
 // 3. Check status / search history
-claude_session_status({ name: "myproject" })
-claude_session_grep({ name: "myproject", pattern: "error" })
+session_status({ name: "myproject" })
+session_grep({ name: "myproject", pattern: "error" })
 
 // 4. Stop when done
-claude_session_stop({ name: "myproject" })
+session_stop({ name: "myproject" })
 ```
 
 ## Session Options
@@ -139,10 +139,10 @@ For details: see [references/council.md](references/council.md)
 Sessions can communicate. Idle sessions receive immediately; busy sessions queue.
 
 ```javascript
-claude_session_send_to({ from: "sender", to: "receiver", message: "Auth module needs rate limiting" })
-claude_session_send_to({ from: "monitor", to: "*", message: "Build failed!" })  // broadcast
-claude_session_inbox({ name: "receiver" })
-claude_session_deliver_inbox({ name: "receiver" })
+session_send_to({ from: "sender", to: "receiver", message: "Auth module needs rate limiting" })
+session_send_to({ from: "monitor", to: "*", message: "Build failed!" })  // broadcast
+session_inbox({ name: "receiver" })
+session_deliver_inbox({ name: "receiver" })
 ```
 
 ## Team Tools (All Engines)
@@ -150,8 +150,8 @@ claude_session_deliver_inbox({ name: "receiver" })
 All engines use the same virtual-team layer: cross-session inbox routing across active SessionManager sessions. (Claude Code's native experimental Agent Teams is in-process TUI only and not reachable from a subprocess wrapper.)
 
 ```javascript
-claude_team_list({ name: "myproject" })
-claude_team_send({ name: "myproject", teammate: "teammate", message: "Review this" })
+team_list({ name: "myproject" })
+team_send({ name: "myproject", teammate: "teammate", message: "Review this" })
 ```
 
 ## Ultraplan & Ultrareview
@@ -165,10 +165,10 @@ Both are async — start then poll status.
 
 | Category | Tools |
 |----------|-------|
-| Session Lifecycle | `claude_session_start`, `claude_session_send`, `claude_session_stop`, `claude_session_list`, `claude_sessions_overview` |
-| Session Ops | `claude_session_status`, `claude_session_grep`, `claude_session_compact`, `claude_session_update_tools`, `claude_session_switch_model` |
-| Inbox | `claude_session_send_to`, `claude_session_inbox`, `claude_session_deliver_inbox` |
-| Teams | `claude_agents_list`, `claude_team_list`, `claude_team_send` |
+| Session Lifecycle | `session_start`, `session_send`, `session_stop`, `session_list`, `sessions_overview` |
+| Session Ops | `session_status`, `session_grep`, `session_compact`, `session_update_tools`, `session_switch_model` |
+| Inbox | `session_send_to`, `session_inbox`, `session_deliver_inbox` |
+| Teams | `agents_list`, `team_list`, `team_send` |
 | Council | `council_start`, `council_status`, `council_abort`, `council_inject`, `council_review`, `council_accept`, `council_reject` |
 | Ultra | `ultraplan_start`, `ultraplan_status`, `ultrareview_start`, `ultrareview_status` |
 

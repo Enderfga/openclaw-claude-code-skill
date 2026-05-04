@@ -11,7 +11,7 @@ support. Key source files:
 
 | File | Purpose |
 |------|---------|
-| `src/index.ts` | Plugin entry — registers all 35 tools (plus 17 v2.x deprecated aliases) |
+| `src/index.ts` | Plugin entry — registers all 35 canonical tools |
 | `src/session-manager.ts` | Core orchestrator — session lifecycle, council, ultraplan/ultrareview |
 | `src/base-oneshot-session.ts` | Abstract base class for one-shot (process-per-send) engines |
 | `src/persistent-session.ts` | Claude Code CLI wrapper (spawn, JSON protocol, stream parsing) |

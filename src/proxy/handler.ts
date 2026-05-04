@@ -298,7 +298,7 @@ async function forwardToGateway(
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${env.gatewayKey}`,
-      'x-openclaw-agent-id': 'claude-code-raw',
+      'x-openclaw-agent-id': 'claw-orchestrator-raw',
     },
     body: JSON.stringify(openaiReq),
     signal: fetchSignal(),

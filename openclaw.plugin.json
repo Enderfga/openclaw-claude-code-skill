@@ -9,7 +9,7 @@
       "claudeBin": {
         "type": "string",
         "default": "claude",
-        "description": "Path to Claude Code CLI binary"
+        "description": "Path to the Claude engine CLI binary"
       },
       "defaultModel": {
         "type": "string",
@@ -28,7 +28,7 @@
       "maxConcurrentSessions": {
         "type": "number",
         "default": 5,
-        "description": "Maximum concurrent Claude Code sessions"
+        "description": "Maximum concurrent coding sessions"
       },
       "sessionTtlMinutes": {
         "type": "number",
@@ -98,24 +98,7 @@
       "ultraplan_start",
       "ultraplan_status",
       "ultrareview_start",
-      "ultrareview_status",
-      "claude_session_start",
-      "claude_session_send",
-      "claude_session_stop",
-      "claude_session_list",
-      "claude_sessions_overview",
-      "claude_session_status",
-      "claude_session_grep",
-      "claude_session_compact",
-      "claude_agents_list",
-      "claude_team_list",
-      "claude_team_send",
-      "claude_session_update_tools",
-      "claude_session_switch_model",
-      "claude_project_purge",
-      "claude_session_send_to",
-      "claude_session_inbox",
-      "claude_session_deliver_inbox"
+      "ultrareview_status"
     ]
   },
   "skills": ["skills/SKILL.md"]
