@@ -1,5 +1,5 @@
 /**
- * Shared types for openclaw-claude-code plugin
+ * Shared types for claw-orchestrator
  */
 
 // Re-export model types and functions from centralized registry

@@ -1,5 +1,5 @@
 /**
- * openclaw-claude-code — Plugin entry point
+ * claw-orchestrator — Plugin entry point
  *
  * Registers tools, hooks, and HTTP routes with the OpenClaw Plugin SDK.
  * When used standalone (no OpenClaw), exports SessionManager for direct use.
@@ -60,10 +60,10 @@ interface PluginAPI {
  * OpenClaw plugin object — standard format
  */
 const plugin = {
-  id: 'openclaw-claude-code',
-  name: 'Claude Code SDK',
+  id: 'claw-orchestrator',
+  name: 'Claw Orchestrator',
   description:
-    'Full-featured Claude Code integration — session management, agent teams, worktree isolation, multi-model proxy',
+    'Run Claude Code, Codex, Gemini, Cursor Agent and custom coding CLIs as one unified runtime — persistent sessions, multi-agent council, worktree isolation, multi-model proxy',
 
   register(api: PluginAPI): void {
     const rawConfig = (api.pluginConfig || {}) as Partial<PluginConfig>;
@@ -80,10 +80,10 @@ const plugin = {
 
     function getManager(): SessionManager {
       if (!manager) {
-        api.logger.info('[openclaw-claude-code] First use — initialising SessionManager and embedded server');
+        api.logger.info('[claw-orchestrator] First use — initialising SessionManager and embedded server');
         manager = new SessionManager(rawConfig);
         server = new EmbeddedServer(manager);
-        server.start().catch((err) => api.logger.error('[openclaw-claude-code] Embedded server failed to start:', err));
+        server.start().catch((err) => api.logger.error('[claw-orchestrator] Embedded server failed to start:', err));
       }
       return manager;
     }
@@ -91,8 +91,8 @@ const plugin = {
     // ─── Service Lifecycle ────────────────────────────────────────────────
 
     api.registerService({
-      id: 'openclaw-claude-code',
-      start: () => api.logger.info('[openclaw-claude-code] Plugin registered (lazy init — will activate on first use)'),
+      id: 'claw-orchestrator',
+      start: () => api.logger.info('[claw-orchestrator] Plugin registered (lazy init — will activate on first use)'),
       stop: () => {
         if (server) server.stop().catch(() => {});
         if (manager) manager.shutdown().catch(() => {});

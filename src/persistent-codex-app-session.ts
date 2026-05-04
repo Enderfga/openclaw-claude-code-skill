@@ -212,7 +212,7 @@ export class PersistentCodexAppServerSession extends EventEmitter implements ISe
 
     // 1. initialize
     await this._request('initialize', {
-      clientInfo: { name: 'openclaw-claude-code', title: null, version: '2.15.0' },
+      clientInfo: { name: 'claw-orchestrator', title: null, version: '3.0.0' },
     });
 
     // 2. thread/start — captures threadId both from the response and the
