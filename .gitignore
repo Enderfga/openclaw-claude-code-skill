@@ -30,3 +30,6 @@ yarn-error.log*
 coverage/
 .claude/worktrees/
 .worktrees/
+
+# Superpowers process artifacts (plans/specs are local scratch, not shipped docs)
+docs/superpowers/
