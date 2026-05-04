@@ -33,7 +33,7 @@ export type EffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'auto';
 
 // ─── Engine ─────────────────────────────────────────────────────────────────
 
-export type EngineType = 'claude' | 'codex' | 'gemini' | 'cursor' | 'custom';
+export type EngineType = 'claude' | 'codex' | 'codex-app' | 'gemini' | 'cursor' | 'custom';
 
 // ─── Custom Engine Config ───────────────────────────────────────────────────
 //
@@ -238,6 +238,12 @@ export interface SessionConfig {
    * Only effective when routing through Bedrock. Values: 'default' | 'flex' | 'priority'.
    */
   bedrockServiceTier?: 'default' | 'flex' | 'priority';
+  // ─── Codex (codex CLI) ────────────────────────────────────────────────
+  /**
+   * Codex sandbox policy. Replaces the deprecated `--full-auto` flag in Codex 0.124+.
+   * Defaults to 'workspace-write' (matches the legacy --full-auto behavior).
+   */
+  sandboxMode?: 'read-only' | 'workspace-write' | 'danger-full-access';
   /** Custom engine configuration — required when engine is 'custom' */
   customEngine?: CustomEngineConfig;
 }
@@ -268,6 +274,8 @@ export interface SessionStats {
   lastRetryError?: string;
   /** Plugins that failed to load due to unmet dependencies (from system/init event, CLI 2.1.121+) */
   pluginErrors?: Array<{ plugin: string; reason: string }>;
+  /** Codex thread ID captured from the most recent `thread.started` event (Codex 0.119+). Used by `codex_resume`. */
+  codexThreadId?: string;
 }
 
 // ─── Hook Config ─────────────────────────────────────────────────────────────

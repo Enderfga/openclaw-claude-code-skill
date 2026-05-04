@@ -2,51 +2,110 @@
  * Persistent Codex Session — wraps OpenAI `codex` CLI
  *
  * Unlike Claude Code, Codex does not maintain a persistent subprocess with
- * streaming JSON I/O.  Each send() spawns a new `codex` process in quiet +
- * full-auto mode.  The "session" is persistent in the sense that:
+ * streaming JSON I/O.  Each send() spawns a new `codex` process in
+ * `--sandbox workspace-write` mode (the modern replacement for the deprecated
+ * `--full-auto` flag) with `--json` to get line-delimited JSON events.
+ *
+ * The "session" is persistent in the sense that:
  *   - Working directory (cwd) carries accumulated code changes across sends
  *   - Stats, history, and cost are tracked continuously
- *   - The session has consistent lifecycle semantics (start/stop/pause/resume)
+ *   - The `thread_id` from the first send is captured and reused via
+ *     `codex exec resume <id>` for subsequent sends, giving the model real
+ *     conversation continuity (Codex 0.119+).
  */
 
 import { spawn } from 'node:child_process';
 
 import type { SessionConfig, SessionSendOptions, StreamEvent, TurnResult } from './types.js';
-import { estimateTokens } from './models.js';
 import { SESSION_EVENT } from './constants.js';
 import { BaseOneShotSession } from './base-oneshot-session.js';
+
+// ─── Codex JSON event shapes (subset we consume) ────────────────────────────
+//
+// Captured from `codex exec --json` against Codex CLI 0.128. These are the
+// only types we parse; anything else falls through to the log channel.
+
+interface CodexThreadStarted {
+  type: 'thread.started';
+  thread_id: string;
+}
+interface CodexItemCompleted {
+  type: 'item.completed';
+  item: { id?: string; type?: string; text?: string };
+}
+interface CodexTurnCompleted {
+  type: 'turn.completed';
+  usage?: {
+    input_tokens?: number;
+    cached_input_tokens?: number;
+    output_tokens?: number;
+    reasoning_output_tokens?: number;
+  };
+}
 
 // ─── PersistentCodexSession ─────────────────────────────────────────────────
 
 export class PersistentCodexSession extends BaseOneShotSession {
+  /**
+   * Captured from the first `thread.started` event. Each subsequent send()
+   * issues `codex exec resume <id>` so the model sees prior turns.
+   */
+  private codexThreadId?: string;
+
   constructor(config: SessionConfig, codexBin?: string) {
     super(config, codexBin || process.env.CODEX_BIN || 'codex', {
       enginePrefix: 'codex',
-      defaultModel: 'o4-mini',
-      supportsCachedTokens: false,
+      defaultModel: 'gpt-5.5',
+      supportsCachedTokens: true,
       engineDisplayName: 'Codex',
     });
   }
 
-  protected _run(message: string, options: SessionSendOptions): Promise<TurnResult> {
-    // Use `codex exec` for non-interactive execution (main `codex` requires TTY)
-    const args: string[] = ['exec', '--full-auto', '--skip-git-repo-check'];
+  /** Expose the captured thread ID for the codex_resume tool and stats overlay. */
+  get threadId(): string | undefined {
+    return this.codexThreadId;
+  }
 
+  /**
+   * Build the Codex spawn args for this turn.
+   *
+   * First turn:    `codex exec [--sandbox W] --skip-git-repo-check --json --model M -C cwd <msg>`
+   * Resume turns:  `codex exec resume <thread_id> [--sandbox W] --skip-git-repo-check --json --model M -C cwd <msg>`
+   */
+  private _buildArgs(message: string): string[] {
+    const args: string[] = ['exec'];
+    const isResume = !!this.codexThreadId;
+    if (isResume) {
+      // `codex exec resume` rejects --sandbox and -C; the sandbox policy and
+      // cwd are inherited from the original session (verified empirically
+      // against codex 0.128.0 — passing --sandbox here errors with
+      // "unexpected argument").
+      args.push('resume', this.codexThreadId!, '--skip-git-repo-check', '--json');
+    } else {
+      const sandbox = this.options.sandboxMode || 'workspace-write';
+      args.push('--sandbox', sandbox, '--skip-git-repo-check', '--json');
+      if (this.options.cwd) args.push('-C', this.options.cwd);
+    }
     if (this.options.model) args.push('--model', this.options.model);
-    if (this.options.cwd) args.push('-C', this.options.cwd);
     args.push(message);
+    return args;
+  }
 
+  protected _run(message: string, options: SessionSendOptions): Promise<TurnResult> {
+    const args = this._buildArgs(message);
     const timeout = options.timeout || 300_000;
 
     return new Promise<TurnResult>((resolve, reject) => {
-      let stdout = '';
+      let stdoutBuf = '';
       let stderr = '';
+      let assistantText = '';
+      let lastUsage: CodexTurnCompleted['usage'] | undefined;
       let settled = false;
 
       const proc = spawn(this.engineBin, args, {
         cwd: this.options.cwd,
         env: { ...process.env },
-        stdio: ['ignore', 'pipe', 'pipe'], // stdin must be 'ignore' — codex waits for piped stdin
+        stdio: ['ignore', 'pipe', 'pipe'],
       });
       this.currentProc = proc;
 
@@ -58,15 +117,67 @@ export class PersistentCodexSession extends BaseOneShotSession {
         }
       }, timeout);
 
-      proc.stdout?.on('data', (data: Buffer) => {
-        const chunk = data.toString();
-        stdout += chunk;
+      const handleEvent = (line: string) => {
+        const trimmed = line.trim();
+        if (!trimmed) return;
+        let event: unknown;
         try {
-          options.callbacks?.onText?.(chunk);
+          event = JSON.parse(trimmed);
         } catch {
-          // User callback error — swallow
+          // Not JSON — log it (could be a stray Codex banner or warning).
+          this.emit(SESSION_EVENT.LOG, `[codex-stdout] ${trimmed}`);
+          return;
         }
-        this.emit(SESSION_EVENT.TEXT, chunk);
+        const ev = event as { type?: string };
+        switch (ev.type) {
+          case 'thread.started': {
+            const t = event as CodexThreadStarted;
+            if (t.thread_id && !this.codexThreadId) {
+              this.codexThreadId = t.thread_id;
+            }
+            break;
+          }
+          case 'item.completed': {
+            const it = event as CodexItemCompleted;
+            if (it.item?.type === 'agent_message' && typeof it.item.text === 'string') {
+              const chunk = it.item.text;
+              assistantText += chunk;
+              try {
+                options.callbacks?.onText?.(chunk);
+              } catch {
+                // User callback errors are not fatal.
+              }
+              this.emit(SESSION_EVENT.TEXT, chunk);
+            } else {
+              // Tool-call items (command, apply_patch, mcp_tool_call) — surface as tool events.
+              try {
+                options.callbacks?.onToolUse?.(event);
+              } catch {
+                // Same swallow rule.
+              }
+              this.emit(SESSION_EVENT.LOG, `[codex-tool] ${trimmed}`);
+            }
+            break;
+          }
+          case 'turn.completed': {
+            const tc = event as CodexTurnCompleted;
+            if (tc.usage) lastUsage = tc.usage;
+            break;
+          }
+          default:
+            // Unhandled event types still go to the log so users can debug.
+            this.emit(SESSION_EVENT.LOG, `[codex-event] ${trimmed}`);
+        }
+      };
+
+      proc.stdout?.on('data', (data: Buffer) => {
+        stdoutBuf += data.toString();
+        let nl: number;
+        while ((nl = stdoutBuf.indexOf('\n')) >= 0) {
+          const line = stdoutBuf.slice(0, nl);
+          stdoutBuf = stdoutBuf.slice(nl + 1);
+          handleEvent(line);
+        }
       });
 
       proc.stderr?.on('data', (data: Buffer) => {
@@ -81,21 +192,27 @@ export class PersistentCodexSession extends BaseOneShotSession {
         if (settled) return;
         settled = true;
 
+        // Drain any final partial line as an event attempt.
+        if (stdoutBuf.trim()) handleEvent(stdoutBuf);
+
         this._recordTurnComplete();
 
-        // Rough token estimate: ~1 token per 4 chars.
-        // TODO(codex-cli): Replace with actual usage data when codex gains --usage output.
-        const estimatedOutputTokens = estimateTokens(stdout);
-        const estimatedInputTokens = estimateTokens(message);
-        this._stats.tokensIn += estimatedInputTokens;
-        this._stats.tokensOut += estimatedOutputTokens;
+        // Real usage from `turn.completed`. Falls back to zero rather than
+        // estimated tokens — better to have an honest "0" than a guess that
+        // misleads cost reporting.
+        if (lastUsage) {
+          this._stats.tokensIn += lastUsage.input_tokens ?? 0;
+          this._stats.tokensOut += (lastUsage.output_tokens ?? 0) + (lastUsage.reasoning_output_tokens ?? 0);
+          this._stats.cachedTokens += lastUsage.cached_input_tokens ?? 0;
+        }
         this._updateCost();
-        this._addHistory({ text: stdout, code });
+        this._addHistory({ text: assistantText, code });
 
         const event: StreamEvent = {
           type: 'result',
-          result: stdout,
+          result: assistantText,
           stop_reason: code === 0 ? 'end_turn' : 'error',
+          session_id: this.codexThreadId,
         };
 
         this.emit(SESSION_EVENT.RESULT, event);
@@ -104,7 +221,7 @@ export class PersistentCodexSession extends BaseOneShotSession {
         if (code !== 0) {
           reject(new Error(stderr || `Codex exited with code ${code}`));
         } else {
-          resolve({ text: stdout, event });
+          resolve({ text: assistantText, event });
         }
       });
 
@@ -116,5 +233,11 @@ export class PersistentCodexSession extends BaseOneShotSession {
         }
       });
     });
+  }
+
+  /** Override getStats to expose the captured thread ID. */
+  getStats(): ReturnType<BaseOneShotSession['getStats']> {
+    const base = super.getStats();
+    return { ...base, codexThreadId: this.codexThreadId };
   }
 }

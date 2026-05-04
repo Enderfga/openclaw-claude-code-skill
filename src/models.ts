@@ -63,6 +63,17 @@ const MODELS: ModelDef[] = [
     contextWindow: 200_000,
   },
 
+  // ── OpenAI GPT-5.5 ────────────────────────────────────────────────────
+  // TODO(gpt-5.5-pricing): pricing copied from gpt-5.4 as a placeholder until
+  // OpenAI publishes official pricing for gpt-5.5. Update on confirmation.
+  {
+    id: 'gpt-5.5',
+    engine: 'codex',
+    provider: 'openai',
+    pricing: { input: 2.5, output: 15, cached: 0.25 },
+    contextWindow: 256_000,
+  },
+
   // ── OpenAI GPT-5.4 ────────────────────────────────────────────────────
   {
     id: 'gpt-5.4',

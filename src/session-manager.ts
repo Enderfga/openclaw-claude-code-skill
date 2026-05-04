@@ -123,6 +123,7 @@ import { sanitizeCwd, validateName } from './validation.js';
 import { PersistentClaudeSession } from './persistent-session.js';
 import { PersistentGeminiSession } from './persistent-gemini-session.js';
 import { PersistentCodexSession } from './persistent-codex-session.js';
+import { PersistentCodexAppServerSession } from './persistent-codex-app-session.js';
 import { PersistentCursorSession } from './persistent-cursor-session.js';
 import { PersistentCustomSession } from './persistent-custom-session.js';
 import {
@@ -877,6 +878,218 @@ export class SessionManager {
     savePersistedSessions(this.persistedSessions, this.logger);
   }
 
+  // ─── Codex /goal helpers (codex-app engine only) ─────────────────────
+
+  /**
+   * Send a `/goal <args>` slash command to a `codex-app` session. Used by
+   * the `codex_goal_*` tools. The server-side parser interprets the slash
+   * command and emits goal-related notifications which the session class
+   * caches.
+   *
+   * Errors clearly when called against a non-`codex-app` session — those
+   * sessions cannot interpret `/goal` (the `codex exec` path has no slash
+   * command surface).
+   */
+  async codexGoalCommand(
+    name: string,
+    slashArgs: string,
+    timeoutMs?: number,
+  ): Promise<{ ok: true; text: string; goal: unknown }> {
+    const managed = this.sessions.get(name);
+    if (!managed) throw new Error(`Session not found: ${name}`);
+    const session = managed.session as ISession & {
+      sendGoalCommand?: (args: string, timeoutMs?: number) => Promise<{ text: string; goal: unknown }>;
+    };
+    if (typeof session.sendGoalCommand !== 'function') {
+      const engine = managed.config.engine || 'claude';
+      throw new Error(
+        `Session "${name}" uses engine "${engine}" which does not support /goal. ` +
+          `Start a session with engine: "codex-app" to use the goal tools.`,
+      );
+    }
+    const result = await session.sendGoalCommand(slashArgs, timeoutMs);
+    return { ok: true, text: result.text, goal: result.goal };
+  }
+
+  /**
+   * Read the cached goal state from a `codex-app` session without sending
+   * any command. Returns null if no goal is set or the session has not yet
+   * received a `thread/goal/updated` notification.
+   */
+  codexGoalGet(name: string): { ok: true; goal: unknown } {
+    const managed = this.sessions.get(name);
+    if (!managed) throw new Error(`Session not found: ${name}`);
+    const session = managed.session as ISession & { goal?: unknown };
+    if (!('goal' in session)) {
+      const engine = managed.config.engine || 'claude';
+      throw new Error(
+        `Session "${name}" uses engine "${engine}" which does not track goal state. ` +
+          `Start a session with engine: "codex-app" to use the goal tools.`,
+      );
+    }
+    return { ok: true, goal: session.goal ?? null };
+  }
+
+  // ─── Codex one-shot wrappers ──────────────────────────────────────────
+
+  private _codexBin(): string {
+    return process.env.CODEX_BIN || 'codex';
+  }
+
+  /**
+   * Parse Codex `--json` JSONL output from a stdout buffer.
+   *
+   * Codex 0.128 emits one event per line: `thread.started`, `turn.started`,
+   * `item.completed` (with `item.type === 'agent_message'` for assistant text
+   * or tool-use types for shell/MCP calls), `turn.completed` (with usage).
+   *
+   * Returns the concatenated assistant text plus the thread_id (if present)
+   * and the raw event list for callers that want full visibility.
+   */
+  private _parseCodexJsonl(stdout: string): {
+    assistantText: string;
+    threadId?: string;
+    usage?: {
+      input_tokens?: number;
+      output_tokens?: number;
+      cached_input_tokens?: number;
+      reasoning_output_tokens?: number;
+    };
+    events: unknown[];
+  } {
+    let assistantText = '';
+    let threadId: string | undefined;
+    let usage:
+      | {
+          input_tokens?: number;
+          output_tokens?: number;
+          cached_input_tokens?: number;
+          reasoning_output_tokens?: number;
+        }
+      | undefined;
+    const events: unknown[] = [];
+    for (const line of stdout.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      let ev: unknown;
+      try {
+        ev = JSON.parse(trimmed);
+      } catch {
+        continue; // Non-JSON lines are tolerated (banners, etc.)
+      }
+      events.push(ev);
+      const e = ev as { type?: string };
+      if (e.type === 'thread.started') {
+        const t = ev as { thread_id?: string };
+        if (t.thread_id) threadId = t.thread_id;
+      } else if (e.type === 'item.completed') {
+        const it = ev as { item?: { type?: string; text?: string } };
+        if (it.item?.type === 'agent_message' && typeof it.item.text === 'string') {
+          assistantText += it.item.text;
+        }
+      } else if (e.type === 'turn.completed') {
+        const tc = ev as { usage?: typeof usage };
+        if (tc.usage) usage = tc.usage;
+      }
+    }
+    return { assistantText, threadId, usage, events };
+  }
+
+  /**
+   * Wraps `codex exec resume [SESSION_ID|--last] [PROMPT]` (Codex 0.119+).
+   *
+   * Resumes a previously recorded Codex thread by UUID/name or picks the most
+   * recent via `--last`. Always uses `--json` + `--sandbox workspace-write`
+   * so the output can be parsed into structured fields.
+   *
+   * Note: this is a one-shot operation independent of the session manager's
+   * tracked sessions. For in-session continuity (each send within one session
+   * resumes the prior thread automatically), `PersistentCodexSession`
+   * already handles that via the captured `thread_id` from `thread.started`.
+   */
+  async codexResume(opts: {
+    sessionId?: string;
+    last?: boolean;
+    message: string;
+    cwd?: string;
+    model?: string;
+    timeout?: number;
+  }): Promise<{
+    ok: true;
+    text: string;
+    threadId?: string;
+    usage?: {
+      input_tokens?: number;
+      output_tokens?: number;
+      cached_input_tokens?: number;
+      reasoning_output_tokens?: number;
+    };
+    events: unknown[];
+  }> {
+    if (!opts.sessionId && !opts.last) {
+      throw new Error('codexResume requires either sessionId or last=true');
+    }
+    // `codex exec resume` does not accept --sandbox or -C — sandbox policy
+    // and cwd are inherited from the original session. Forward `cwd` via
+    // the spawn process's working directory so Codex's --last picker scopes
+    // correctly when no SESSION_ID is given.
+    const args: string[] = ['exec', 'resume'];
+    if (opts.last) args.push('--last');
+    else if (opts.sessionId) args.push(opts.sessionId);
+    args.push('--skip-git-repo-check', '--json');
+    if (opts.model) args.push('--model', opts.model);
+    args.push(opts.message);
+    const { stdout } = await execFileAsync(this._codexBin(), args, {
+      cwd: opts.cwd ? path.resolve(opts.cwd) : undefined,
+      maxBuffer: 32 * 1024 * 1024,
+      timeout: opts.timeout || 300_000,
+    });
+    const parsed = this._parseCodexJsonl(stdout);
+    return {
+      ok: true,
+      text: parsed.assistantText,
+      threadId: parsed.threadId,
+      usage: parsed.usage,
+      events: parsed.events,
+    };
+  }
+
+  /**
+   * Wraps `codex review [PROMPT] [--uncommitted | --base BRANCH | --commit SHA]`.
+   *
+   * Codex 0.128's review subcommand outputs plain text (no `--json` flag),
+   * so the wrapper just captures stdout/stderr verbatim.
+   */
+  async codexReview(opts: {
+    prompt?: string;
+    cwd?: string;
+    uncommitted?: boolean;
+    base?: string;
+    commit?: string;
+    title?: string;
+    model?: string;
+    timeout?: number;
+  }): Promise<{ ok: true; stdout: string; stderr: string }> {
+    // Mutex: at most one diff scope flag.
+    const scopes = [opts.uncommitted, opts.base, opts.commit].filter((v) => v != null && v !== false);
+    if (scopes.length > 1) {
+      throw new Error('codexReview: --uncommitted, --base, and --commit are mutually exclusive');
+    }
+    const args: string[] = ['review'];
+    if (opts.uncommitted) args.push('--uncommitted');
+    if (opts.base) args.push('--base', opts.base);
+    if (opts.commit) args.push('--commit', opts.commit);
+    if (opts.title) args.push('--title', opts.title);
+    if (opts.model) args.push('-c', `model="${opts.model}"`);
+    if (opts.prompt) args.push(opts.prompt);
+    const { stdout, stderr } = await execFileAsync(this._codexBin(), args, {
+      cwd: opts.cwd ? path.resolve(opts.cwd) : undefined,
+      maxBuffer: 16 * 1024 * 1024,
+      timeout: opts.timeout || 600_000,
+    });
+    return { ok: true, stdout, stderr };
+  }
+
   // ─── Project Purge (CLI 2.1.126) ──────────────────────────────────────
 
   /**
@@ -1159,6 +1372,8 @@ export class SessionManager {
         return new PersistentGeminiSession(config, process.env.GEMINI_BIN);
       case 'codex':
         return new PersistentCodexSession(config, process.env.CODEX_BIN);
+      case 'codex-app':
+        return new PersistentCodexAppServerSession(config, process.env.CODEX_BIN);
       case 'cursor':
         return new PersistentCursorSession(config, process.env.CURSOR_BIN);
       case 'custom':

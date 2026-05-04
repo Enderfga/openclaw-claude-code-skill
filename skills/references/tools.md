@@ -158,6 +158,81 @@ Returns `{ ok, stdout, stderr, dryRun }`.
 
 ---
 
+## Codex (7)
+
+Tools targeting OpenAI's `codex` CLI. The `codex_resume` and `codex_review` tools are one-shot wrappers and work without a managed session. The `codex_goal_*` tools require a session started with `engine: "codex-app"` (see [multi-engine.md](./multi-engine.md)) — the legacy `engine: "codex"` (which uses `codex exec`) has no slash-command surface.
+
+### `codex_resume`
+
+Resume a previously recorded Codex thread by UUID/name, or pick the most recent with `last=true`. Spawns `codex exec resume` with `--json` and parses the JSONL output into structured fields. Independent of session manager state.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `session_id` | string | | Codex thread UUID/name. Mutually exclusive with `last`. |
+| `last` | boolean | | Resume the most recent recorded session. |
+| `message` | string | yes | Prompt to send after resuming. |
+| `cwd` | string | | Working directory. |
+| `model` | string | | Override model. |
+| `timeout` | number | | Timeout in ms (default 300000). |
+
+> Note: `codex exec resume` does not accept `--sandbox` or `-C` (sandbox policy and cwd are inherited from the original session). The `cwd` parameter only sets the spawn's working directory so `--last`'s session-picker scopes correctly.
+
+Returns `{ ok, text, threadId?, usage?, events }`.
+
+### `codex_review`
+
+Run a non-interactive Codex code review (`codex review`). Pick exactly one diff scope.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `prompt` | string | Custom review instructions. |
+| `cwd` | string | Repository to review. |
+| `uncommitted` | boolean | Review staged + unstaged + untracked. |
+| `base` | string | Review changes against this base branch. |
+| `commit` | string | Review changes introduced by this commit SHA. |
+| `title` | string | Optional commit title shown in review summary. |
+| `model` | string | Override model. |
+| `timeout` | number | Timeout in ms (default 600000). |
+
+Returns `{ ok, stdout, stderr }`.
+
+### `codex_goal_set`
+
+Set a long-horizon objective. Sends `/goal <objective>` via the app-server. **Requires `engine: "codex-app"`.**
+
+| Parameter | Type | Required |
+|-----------|------|----------|
+| `name` | string | yes |
+| `objective` | string | yes |
+| `timeout` | number | |
+
+Returns `{ ok, text, goal }` where `goal` is `{ objective, status: "active"|"paused"|"budgetLimited"|"complete", tokensUsed, timeUsedSeconds, tokenBudget?, ... }` or `null`.
+
+### `codex_goal_get`
+
+Read the cached goal state. Pure read — does not send a turn.
+
+| Parameter | Type | Required |
+|-----------|------|----------|
+| `name` | string | yes |
+
+Returns `{ ok, goal }` (`null` if no goal active).
+
+### `codex_goal_pause` / `codex_goal_resume` / `codex_goal_clear`
+
+Send `/goal pause`, `/goal resume`, or `/goal clear` respectively. Requires `engine: "codex-app"`.
+
+| Parameter | Type | Required |
+|-----------|------|----------|
+| `name` | string | yes |
+| `timeout` | number | |
+
+Returns `{ ok, text, goal }`.
+
+> **Stability note:** Codex's `goals` feature is flagged "under development" in 0.128.0 and has known bugs (issue #20591). The slash-command parsing on the server side may also evolve. The wrapper is intentionally a thin sugar layer so upstream changes only affect the slash-text we send, not the protocol structure.
+
+---
+
 ## Agent Teams (3)
 
 ### `claude_agents_list`

@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.15.0] - 2026-05-04
+
+### Added — Codex CLI 0.128.0 alignment + `/goal` support
+
+Bumped tested Codex CLI from `0.118.0` to `0.128.0`. The wrapper had drifted ten minor versions; this release brings it current and adds long-horizon objective support via Codex's app-server protocol.
+
+#### Codex `exec` path (`engine: 'codex'`)
+
+- **Spawn args modernized**. Replaced the deprecated `--full-auto` flag with `--sandbox workspace-write` (avoids the per-spawn deprecation warning Codex 0.124+ emits). Added `--json` so output is line-delimited JSON events instead of free-form text.
+- **JSONL event parser**. New parser consumes Codex's `thread.started`, `turn.started`, `item.completed` (`agent_message` and tool-use variants), and `turn.completed` events. Replaces the old char-count token estimate with the real `usage` payload (`input_tokens`, `output_tokens`, `cached_input_tokens`, `reasoning_output_tokens` — the latter two are new in Codex 0.125).
+- **Per-session thread continuity**. The `thread_id` from each session's first `thread.started` event is captured and reused via `codex exec resume <id>` for subsequent sends, so the model sees prior turns instead of starting fresh each send.
+- **`supportsCachedTokens: true`**. The Codex engine now reports cached input tokens and applies cached pricing in cost calculations (the path was already implemented in `BaseOneShotSession`; this just flips the flag).
+- **Default model bumped** from `o4-mini` → `gpt-5.5`. New `gpt-5.5` entry added to `models.ts` (pricing currently mirrors `gpt-5.4` as a `TODO` placeholder until OpenAI publishes official numbers).
+- **New `sandboxMode` field** on `SessionConfig` — `'read-only' | 'workspace-write' | 'danger-full-access'`. Defaults to `workspace-write` (matches old `--full-auto` behavior).
+
+#### New one-shot tools
+
+- **`codex_resume`** — wraps `codex exec resume [SESSION_ID|--last] [PROMPT]` (Codex 0.119+) for cross-process thread continuity. Returns `{ text, threadId, usage, events }`.
+- **`codex_review`** — wraps `codex review [PROMPT] [--uncommitted | --base BRANCH | --commit SHA]`. Plain-text output (Codex's review subcommand does not emit JSON).
+
+#### `/goal` long-horizon objectives — new `codex-app` engine
+
+- **`PersistentCodexAppServerSession`** — new session class wrapping `codex app-server --listen stdio:// --enable goals`. Speaks Codex's v2 JSON-RPC 2.0 protocol over stdio. Required for `/goal` because `codex exec` has no slash-command surface.
+- **`engine: 'codex-app'`** — new engine type. Long-running subprocess (one `app-server` per session); real-time streaming via `item/agentMessage/delta` notifications; cumulative token tracking via `thread/tokenUsage/updated`.
+- **Goal lifecycle observation** — subscribes to `thread/goal/updated` and `thread/goal/cleared` notifications. Cached state available via `getStats().goal` and the `codex_goal_get` tool.
+- **5 new tools**: `codex_goal_set`, `codex_goal_get`, `codex_goal_pause`, `codex_goal_resume`, `codex_goal_clear`. The mutation tools are convenience wrappers — internally they send `/goal <args>` as user text via `turn/start`, since Codex's v2 protocol has no client-side goal-mutation RPCs (verified via `codex app-server generate-json-schema`). Each tool errors clearly when called against a non-`codex-app` session.
+
+> **Feature-flag risk.** The `goals` feature is marked "under development" in Codex 0.128.0 and has a known bug (issue #20591). The session class always passes `--enable goals` so it works the moment upstream stabilizes; during the transition some goal commands may fail server-side. The wrapper layer is unaffected by upstream churn.
+
+#### Skipped
+
+`codex cloud`, `codex apply`, MCP-server management subcommands, `codex exec-server`, `codex sandbox`, the `@openai/codex-sdk` npm package — all noted in research but deferred. None affect existing wrapper behavior.
+
 ## [2.14.2] - 2026-05-04
 
 ### Added — Claude Code CLI 2.1.122 → 2.1.126 sync

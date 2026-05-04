@@ -6,15 +6,17 @@ openclaw-claude-code supports multiple coding CLI engines behind a unified `ISes
 
 ```
 SessionManager
-├── engine: 'claude'  → PersistentClaudeSession
+├── engine: 'claude'    → PersistentClaudeSession
 │   └── Wraps: claude CLI (stream-json protocol, persistent subprocess)
-├── engine: 'codex'   → PersistentCodexSession
-│   └── Wraps: codex exec --full-auto (per-message spawning)
-├── engine: 'gemini'  → PersistentGeminiSession
+├── engine: 'codex'     → PersistentCodexSession
+│   └── Wraps: codex exec --sandbox workspace-write --json (per-message spawning)
+├── engine: 'codex-app' → PersistentCodexAppServerSession
+│   └── Wraps: codex app-server --listen stdio:// (long-running JSON-RPC; required for /goal)
+├── engine: 'gemini'    → PersistentGeminiSession
 │   └── Wraps: gemini -p --output-format stream-json (per-message spawning)
-├── engine: 'cursor'  → PersistentCursorSession
+├── engine: 'cursor'    → PersistentCursorSession
 │   └── Wraps: agent -p --force --output-format stream-json (per-message spawning)
-└── engine: 'custom'  → PersistentCustomSession
+└── engine: 'custom'    → PersistentCustomSession
     └── Wraps: any CLI via user-provided CustomEngineConfig
 ```
 
@@ -22,7 +24,7 @@ SessionManager
 
 ### Claude Code (`engine: 'claude'`)
 
-Default engine. Long-running subprocess with streaming JSON I/O. Tested with Claude Code CLI **2.1.121**.
+Default engine. Long-running subprocess with streaming JSON I/O. Tested with Claude Code CLI **2.1.126**.
 
 - Persistent multi-turn conversations
 - Real-time streaming (text, tool_use, tool_result, system events)
@@ -48,22 +50,51 @@ await manager.startSession({
 
 ### OpenAI Codex (`engine: 'codex'`)
 
-Wraps the `codex exec` subcommand in full-auto mode. Each `send()` spawns a new process.
+Wraps the `codex exec` subcommand. Each `send()` spawns a new process. Tested with `codex` CLI **0.128.0**.
 
-- Non-interactive execution via `codex exec --full-auto`
+- Non-interactive execution via `codex exec --sandbox workspace-write --json` (replaces the deprecated `--full-auto` flag from earlier Codex versions)
+- Real per-turn `usage` from the `turn.completed` JSON event (input, output, cached, reasoning tokens)
+- Per-session continuity: the `thread_id` from the first turn's `thread.started` event is captured and reused via `codex exec resume <id>` for subsequent sends, so the model sees prior turns
+- One-shot execution per message (no persistent subprocess between sends)
 - Working directory passed via `-C` flag
-- One-shot execution per message (no persistent subprocess)
-- Working directory carries accumulated changes across sends
-- Token estimation from response length (~4 chars/token)
-- Requires `codex` CLI >= 0.112: `npm install -g @openai/codex`
+- Default model: `gpt-5.5`
+- Requires `codex` CLI >= 0.119 (for `exec resume`): `npm install -g @openai/codex`
+- **Does not support `/goal`** — for that, use `engine: 'codex-app'` below
 
 ```typescript
 await manager.startSession({
   name: 'codex-task',
   engine: 'codex',
-  model: 'gpt-5.4',
+  model: 'gpt-5.5',
+  cwd: '/project',
+  sandboxMode: 'workspace-write', // optional, this is the default
+});
+```
+
+### OpenAI Codex App-Server (`engine: 'codex-app'`)
+
+Wraps `codex app-server --listen stdio:// --enable goals` as a long-running JSON-RPC subprocess. **Required for `/goal` long-horizon objective support** — Codex's exec subcommand has no slash-command surface.
+
+- Long-running subprocess; one `codex app-server` per session
+- JSON-RPC 2.0 over stdio with v2 protocol method names (`initialize`, `thread/start`, `turn/start`, ...)
+- Real-time streaming via `item/agentMessage/delta` notifications
+- Cumulative token tracking from `thread/tokenUsage/updated` notifications
+- Goal lifecycle observation via `thread/goal/updated` and `thread/goal/cleared` notifications
+- Goal control via the `codex_goal_*` tools (which internally send the `/goal` slash command as user text — see [tools.md](./tools.md#codex-7))
+
+> **Feature-flag risk.** The `goals` feature is marked "under development" in Codex 0.128.0 and has known bugs (e.g. issue #20591). The session class always passes `--enable goals` so it works the moment upstream stabilizes the feature, but during the transition period some goal commands may fail or be silently dropped on the server side. The wrapper layer is unaffected.
+
+```typescript
+await manager.startSession({
+  name: 'codex-goal-task',
+  engine: 'codex-app',
+  model: 'gpt-5.5',
   cwd: '/project',
 });
+// Then either:
+//   await manager.codexGoalCommand('codex-goal-task', 'build a tic-tac-toe app');
+// or via the codex_goal_set tool:
+//   await tool('codex_goal_set', { name: 'codex-goal-task', objective: 'build a tic-tac-toe app' });
 ```
 
 ### Google Gemini (`engine: 'gemini'`)

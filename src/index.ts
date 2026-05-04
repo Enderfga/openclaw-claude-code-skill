@@ -136,8 +136,9 @@ const plugin = {
           cwd: { type: 'string', description: 'Working directory' },
           engine: {
             type: 'string',
-            enum: ['claude', 'codex', 'gemini', 'cursor', 'custom'],
-            description: 'Engine to use (default: claude). Use "custom" with customEngine config for any CLI.',
+            enum: ['claude', 'codex', 'codex-app', 'gemini', 'cursor', 'custom'],
+            description:
+              'Engine to use (default: claude). codex = `codex exec` per send (no /goal). codex-app = long-running `codex app-server` with /goal support. Use "custom" with customEngine config for any CLI.',
           },
           model: { type: 'string', description: 'Model to use (opus, sonnet, haiku, gemini-pro, o4-mini, etc.)' },
           permissionMode: {
@@ -585,6 +586,173 @@ const plugin = {
       },
     });
 
+    // ─── Tool: codex_resume (Codex 0.119+) ──────────────────────────────
+
+    api.registerTool({
+      name: 'codex_resume',
+      description:
+        'Resume a previously recorded Codex thread by UUID/name, or pick the most recent with last=true. Spawns `codex exec resume` with --json so the output is parsed into structured fields. Independent of session manager state — useful for cross-process continuity.',
+      parameters: {
+        type: 'object',
+        properties: {
+          session_id: { type: 'string', description: 'Codex thread UUID or name. Mutually exclusive with last.' },
+          last: { type: 'boolean', description: 'Resume the most recent recorded Codex session.' },
+          message: { type: 'string', description: 'Prompt to send after resuming.' },
+          cwd: { type: 'string', description: 'Working directory to run codex in.' },
+          model: { type: 'string', description: 'Override model (e.g. gpt-5.5).' },
+          timeout: { type: 'number', description: 'Timeout in ms (default 300000).' },
+        },
+        required: ['message'],
+      },
+      execute: async (_id, args) => {
+        return await getManager().codexResume({
+          sessionId: args.session_id as string | undefined,
+          last: args.last as boolean | undefined,
+          message: args.message as string,
+          cwd: args.cwd as string | undefined,
+          model: args.model as string | undefined,
+          timeout: args.timeout as number | undefined,
+        });
+      },
+    });
+
+    // ─── Tool: codex_review ─────────────────────────────────────────────
+
+    api.registerTool({
+      name: 'codex_review',
+      description:
+        'Run a non-interactive Codex code review (`codex review`). Pick exactly one diff scope: uncommitted (working-tree changes), base (vs branch), or commit (vs SHA). Output is plain text — Codex `review` does not emit JSON.',
+      parameters: {
+        type: 'object',
+        properties: {
+          prompt: { type: 'string', description: 'Custom review instructions (optional).' },
+          cwd: { type: 'string', description: 'Repository to review. Defaults to current cwd.' },
+          uncommitted: {
+            type: 'boolean',
+            description: 'Review staged + unstaged + untracked changes. Mutually exclusive with base/commit.',
+          },
+          base: {
+            type: 'string',
+            description: 'Review changes against this base branch. Mutually exclusive with uncommitted/commit.',
+          },
+          commit: {
+            type: 'string',
+            description: 'Review changes introduced by this commit SHA. Mutually exclusive with uncommitted/base.',
+          },
+          title: { type: 'string', description: 'Optional commit title shown in the review summary.' },
+          model: { type: 'string', description: 'Override model.' },
+          timeout: { type: 'number', description: 'Timeout in ms (default 600000).' },
+        },
+      },
+      execute: async (_id, args) => {
+        return await getManager().codexReview({
+          prompt: args.prompt as string | undefined,
+          cwd: args.cwd as string | undefined,
+          uncommitted: args.uncommitted as boolean | undefined,
+          base: args.base as string | undefined,
+          commit: args.commit as string | undefined,
+          title: args.title as string | undefined,
+          model: args.model as string | undefined,
+          timeout: args.timeout as number | undefined,
+        });
+      },
+    });
+
+    // ─── Tools: codex_goal_* (Codex 0.128 /goal slash commands) ────────
+    //
+    // Goal mutation in Codex's v2 protocol is **server-side**: clients drive
+    // it by sending the `/goal <args>` slash text via `turn/start`. These
+    // tools are convenience wrappers around that pattern, scoped to sessions
+    // started with engine: "codex-app". Calls against any other engine
+    // surface a clear error rather than silently no-op'ing.
+
+    api.registerTool({
+      name: 'codex_goal_set',
+      description:
+        'Set a long-horizon objective on a codex-app session. Sends `/goal <objective>` via the app-server slash command. Requires engine: "codex-app".',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Session name (must be a codex-app session).' },
+          objective: {
+            type: 'string',
+            description: 'The objective text. Codex will pursue this across turns until achieved, paused, or cleared.',
+          },
+          timeout: { type: 'number', description: 'Timeout in ms for the resulting turn (default 120000).' },
+        },
+        required: ['name', 'objective'],
+      },
+      execute: async (_id, args) => {
+        return await getManager().codexGoalCommand(
+          args.name as string,
+          args.objective as string,
+          args.timeout as number | undefined,
+        );
+      },
+    });
+
+    api.registerTool({
+      name: 'codex_goal_get',
+      description:
+        'Read the cached goal state on a codex-app session (objective, status, tokensUsed, timeUsedSeconds, tokenBudget). Returns null if no goal is active. Pure read — does not send any turn.',
+      parameters: {
+        type: 'object',
+        properties: { name: { type: 'string', description: 'Session name (must be a codex-app session).' } },
+        required: ['name'],
+      },
+      execute: async (_id, args) => {
+        return getManager().codexGoalGet(args.name as string);
+      },
+    });
+
+    api.registerTool({
+      name: 'codex_goal_pause',
+      description: 'Pause goal pursuit on a codex-app session. Sends `/goal pause`.',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Session name.' },
+          timeout: { type: 'number', description: 'Timeout in ms (default 120000).' },
+        },
+        required: ['name'],
+      },
+      execute: async (_id, args) => {
+        return await getManager().codexGoalCommand(args.name as string, 'pause', args.timeout as number | undefined);
+      },
+    });
+
+    api.registerTool({
+      name: 'codex_goal_resume',
+      description: 'Resume a paused goal on a codex-app session. Sends `/goal resume`.',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Session name.' },
+          timeout: { type: 'number', description: 'Timeout in ms (default 120000).' },
+        },
+        required: ['name'],
+      },
+      execute: async (_id, args) => {
+        return await getManager().codexGoalCommand(args.name as string, 'resume', args.timeout as number | undefined);
+      },
+    });
+
+    api.registerTool({
+      name: 'codex_goal_clear',
+      description: 'Clear the active goal on a codex-app session. Sends `/goal clear`.',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Session name.' },
+          timeout: { type: 'number', description: 'Timeout in ms (default 120000).' },
+        },
+        required: ['name'],
+      },
+      execute: async (_id, args) => {
+        return await getManager().codexGoalCommand(args.name as string, 'clear', args.timeout as number | undefined);
+      },
+    });
+
     // ─── Tool: council_start ────────────────────────────────────────────
 
     api.registerTool({
@@ -607,7 +775,7 @@ const plugin = {
                 persona: { type: 'string', description: 'Agent personality/expertise description' },
                 engine: {
                   type: 'string',
-                  enum: ['claude', 'codex', 'gemini', 'cursor', 'custom'],
+                  enum: ['claude', 'codex', 'codex-app', 'gemini', 'cursor', 'custom'],
                   description: 'Engine (default: claude). Use "custom" with customEngine for any CLI.',
                 },
                 model: { type: 'string', description: 'Model to use' },
