@@ -225,3 +225,109 @@ See [`CONTRIBUTING.md`](./CONTRIBUTING.md). PR prefixes (`feat:`, `fix:`, `docs:
 ## License
 
 MIT — see [`LICENSE`](./LICENSE).
+## ❓ FAQ
+
+### General
+
+**What is Claw Orchestrator?**
+Claw Orchestrator is a TypeScript runtime that turns interactive coding CLIs (Claude Code, Codex, Gemini, Cursor Agent, custom CLIs) into persistent, programmable coding agents. It provides session management, multi-engine routing, multi-agent councils, and a tool-based API.
+
+**How is it different from running coding agents directly?**
+Coding agents are designed as interactive CLIs. Claw Orchestrator adds persistent sessions (agents stay alive across requests), multi-engine support (switch between Claude/Codex/Gemini/Cursor), multi-agent councils (parallel collaboration with isolated worktrees), and a clean tool API for integration with OpenClaw, MCP servers, bots, and dashboards.
+
+**What is OpenClaw?**
+OpenClaw is an agent platform that Claw Orchestrator integrates with as a first-class plugin. When installed as an OpenClaw plugin, all 35+ tools (session management, councils, team coordination) become available to every OpenClaw agent.
+
+### Setup & Configuration
+
+**How do I install Claw Orchestrator?**
+```bash
+npm install -g @enderfga/claw-orchestrator
+```
+Or use the install script for OpenClaw integration:
+```bash
+curl -fsSL https://raw.githubusercontent.com/Enderfga/claw-orchestrator/main/install.sh | bash
+```
+
+**What coding agents are supported?**
+Claude Code, OpenAI Codex, Gemini CLI, Cursor Agent, and any custom CLI that can run as a subprocess. See the [Engine Compatibility](#engine-compatibility) table for tested versions.
+
+**What are the system requirements?**
+- Node.js 20+
+- npm/pnpm/yarn
+- Git (for worktree isolation in councils)
+- The CLI binaries for your chosen coding agents (`claude`, `codex`, `gemini`, `agent`)
+
+**Can I run it without OpenClaw?**
+Yes! Claw Orchestrator runs standalone with its own CLI (`clawo`). OpenClaw integration is optional but provides first-class plugin support.
+
+### Development
+
+**How do persistent sessions work?**
+Sessions keep coding agents alive across requests. You start a session, send messages, and the agent maintains context. Sessions can be compacted, stopped, and queried for status.
+
+```ts
+const session = await manager.startSession({
+  name: "fix-tests",
+  engine: "claude",
+  cwd: "/path/to/project",
+});
+await manager.sendMessage("fix-tests", "Fix the failing tests");
+```
+
+**What is a multi-agent council?**
+A council runs multiple agents in parallel with isolated git worktrees. Each agent has independent reasoning and can review others' work. Useful for complex tasks requiring planning, implementation, and review.
+
+```ts
+await manager.councilStart("Design and implement an auth system", {
+  agents: [
+    { name: "Planner", engine: "claude" },
+    { name: "Builder", engine: "codex" },
+    { name: "Reviewer", engine: "claude" },
+  ],
+});
+```
+
+**How many tools are available?**
+35 tools covering session management, team coordination, council operations, ultraplan (deep planning), and ultrareview (fleet review). See the [Tool Orchestration](#tool-orchestration) section for the full list.
+
+### Deployment
+
+**Can I deploy Claw Orchestrator as a server?**
+Yes! Run `clawo serve` to start the HTTP server. You can deploy to any platform that supports Node.js.
+
+**How do I integrate with OpenClaw?**
+Install via the install script or manually register the plugin in `~/.openclaw/openclaw.json`. See the [Getting Started guide](./skills/references/getting-started.md).
+
+### Troubleshooting
+
+**Sessions aren't starting**
+- Verify the CLI binary is installed and in PATH (`claude --version`, `codex --version`, etc.)
+- Check that the working directory exists and is a git repo (for councils)
+- Run `clawo session-status <name>` to check session state
+
+**Council fails to start**
+- Ensure Git is installed and configured
+- Check that you have write permissions to create worktrees
+- Verify all agent CLIs are installed
+
+**OpenClaw plugin not loading**
+- Verify the plugin is registered in `~/.openclaw/openclaw.json`
+- Check the plugin ID is `claw-orchestrator` (not the old `openclaw-claude-code`)
+- Restart the OpenClaw gateway after installation
+
+### Migration
+
+**How do I migrate from v2.x?**
+See the [Migrating from v2.x](#migrating-from-v2x) section. Key changes:
+- Package renamed to `@enderfga/claw-orchestrator`
+- CLI renamed to `clawo`
+- Tool names changed from `claude_*` to engine-neutral names
+- Plugin ID changed to `claw-orchestrator`
+
+### Help & Community
+
+- **Contributing:** See [`CONTRIBUTING.md`](./CONTRIBUTING.md)
+- **Architecture:** See [`CLAUDE.md`](./CLAUDE.md)
+- **Reference docs:** See [`skills/references/`](./skills/references/)
+- **License:** MIT — see [`LICENSE`](./LICENSE)
